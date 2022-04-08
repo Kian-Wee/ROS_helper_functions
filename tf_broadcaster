@@ -10,7 +10,7 @@ from geometry_msgs.msg import PoseStamped
 import tf
 
 drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
-publish_topic = drone_name + "/global_position/pose"
+publish_topic = drone_name+ "/global_position/pose"
 
 class transform():
 
@@ -23,15 +23,12 @@ class transform():
 
         global_pos = rospy.Publisher(publish_topic, PoseStamped,queue_size=1)
 
-        print(publish_topic)
-
         rate = rospy.Rate(200.0)
 
         while not rospy.is_shutdown():
 
             try:
-                (trans,rot) = listener.lookupTransform("/odom",drone_name+"/t265_odom_frame", rospy.Time(0))
-                print(trans)
+                (trans,rot) = listener.lookupTransform("/odom", drone_name+"/t265_odom_frame", rospy.Time(0))
             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                 continue
 
@@ -59,6 +56,5 @@ if __name__ == '__main__':
     node = transform()
 
     rospy.spin()
-
 
 
