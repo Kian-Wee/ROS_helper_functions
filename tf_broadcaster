@@ -46,16 +46,16 @@ class transform():
             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                 continue
 
-            cmd = PoseStamped()
+            cmd = PoseWithCovarianceStamped()
 
-            cmd.pose.position.x=trans[0] + self.x
-            cmd.pose.position.y=trans[1] + self.y
-            cmd.pose.position.z=trans[2] + self.z
+            cmd.pose.pose.position.x=trans[0] + self.x
+            cmd.pose.pose.position.y=trans[1] + self.y
+            cmd.pose.pose.position.z=trans[2] + self.z
 
-            cmd.pose.orientation.x=rot[0] + self.rx
-            cmd.pose.orientation.y=rot[1] + self.ry
-            cmd.pose.orientation.z=rot[2] + self.rz
-            cmd.pose.orientation.w=rot[3] + self.rw
+            cmd.pose.pose.orientation.x=rot[0] + self.rx
+            cmd.pose.pose.orientation.y=rot[1] + self.ry
+            cmd.pose.pose.orientation.z=rot[2] + self.rz
+            cmd.pose.pose.orientation.w=rot[3] + self.rw
 
             global_pos.publish(cmd)
 
