@@ -1,0 +1,105 @@
+#!/usr/bin/env python
+
+## Publishes a topic with the the with/after tf transforms
+  
+import os
+import rospy
+import math
+import os
+from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+import tf
+from tf2_msgs.msg import TFMessage
+
+# drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
+# drone_number = os.getenv('DRONE_NUMBER') #environment variable set in bashrc(or exported in terminal)
+# publish_topic = drone_name+ "/global_position/pose"
+publish_topic = "HumanPose"
+# odom_frame_id=drone_name+"/t265_odom_frame"
+
+class transform():
+
+    def __init__(self):
+
+        # self.y = 0.0
+        # self.x = 0.0
+        # self.z = 0.0
+        # self.rx = 0.0
+        # self.ry = 0.0
+        # self.rz = 0.0
+        # self.rw = 0.0
+
+        # rospy.Subscriber('/tf', TFMessage, self.callback_tf)
+        # listener = tf.TransformListener()
+
+        # self.local_pos=PoseStamped()
+        # # rospy.Subscriber(drone_name + "/mavros/local_position/pose", PoseStamped, self.position_callback)
+        # rospy.Subscriber(drone_name + "/mavros/local_position/pose", PoseStamped, self.position_callback)
+
+        self.local_pos = Odometry()
+        rospy.Subscriber('/imu_odometry', Odometry, self.position_callback)
+
+        global_pos = rospy.Publisher(publish_topic, PoseWithCovarianceStamped,queue_size=1)
+
+        rate = rospy.Rate(200.0)
+
+        while not rospy.is_shutdown():
+
+            # try:
+            #     (trans,rot) = listener.lookupTransform("/odom", drone_name+"/t265_odom_frame", rospy.Time(0))
+            # except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+            #     continue
+
+            cmd = PoseWithCovarianceStamped()
+
+            # cmd.pose.pose.position.x=self.local_pos.pose.pose.position.x
+            # cmd.pose.pose.position.y=self.local_pos.pose.pose.position.y
+            # cmd.pose.pose.position.z=self.local_pos.pose.pose.position.z
+
+            # cmd.pose.pose.orientation.x=self.local_pos.pose.pose.orientation.x
+            # cmd.pose.pose.orientation.y=self.local_pos.pose.pose.orientation.y
+            # cmd.pose.pose.orientation.z=self.local_pos.pose.pose.orientation.z
+            # cmd.pose.pose.orientation.w=self.local_pos.pose.pose.orientation.w
+
+            cmd.pose.pose.position.x=9
+            cmd.pose.pose.position.y=0
+            cmd.pose.pose.position.z=0
+
+            cmd.pose.pose.orientation.x=0
+            cmd.pose.pose.orientation.y=0
+            cmd.pose.pose.orientation.z=0
+            cmd.pose.pose.orientation.w=1
+
+            global_pos.publish(cmd)
+
+            rate.sleep()
+
+    # def callback_tf(self,data):
+    #     if data.transforms[0].header.frame_id == odom_frame_id:
+    #         self.y = data.transforms[0].transform.translation.y
+    #         self.x = data.transforms[0].transform.translation.x
+    #         self.z = data.transforms[0].transform.translation.z
+    #         self.rx = data.transforms[0].transform.rotation.x
+    #         self.ry = data.transforms[0].transform.rotation.y
+    #         self.rz = data.transforms[0].transform.rotation.z
+    #         self.rw = data.transforms[0].transform.rotation.w
+    #     else:
+    #         self.y = self.y
+    #         self.x = self.x
+    #         self.z = self.z
+    #         self.rx = self.rx
+    #         self.ry = self.ry
+    #         self.rz = self.rz
+
+
+    def position_callback(self,data):
+        self.local_pos=data
+
+if __name__ == '__main__':
+    rospy.init_node('odom_human_tf_transformer')
+
+    node = transform()
+
+    rospy.spin()
+
+
