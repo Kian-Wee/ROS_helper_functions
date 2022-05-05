@@ -6,22 +6,36 @@ import os
 import rospy
 import math
 import os
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
 import tf
+from tf2_msgs.msg import TFMessage
 
 drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
-publish_topic = drone_name+ "/global_position/pose"
+drone_number = os.getenv('DRONE_NUMBER') #environment variable set in bashrc(or exported in terminal)
+# publish_topic = drone_name+ "/global_position/pose"
+publish_topic = "/UAV" + drone_number+ "Pose"
+odom_frame_id=drone_name+"/t265_odom_frame"
 
 class transform():
 
     def __init__(self):
 
+        self.y = 0.0
+        self.x = 0.0
+        self.z = 0.0
+        self.rx = 0.0
+        self.ry = 0.0
+        self.rz = 0.0
+        self.rw = 0.0
+
+        rospy.Subscriber('/tf', TFMessage, self.callback_tf)
         listener = tf.TransformListener()
 
-        self.local_pos=PoseStamped()
-        rospy.Subscriber(drone_name + "/mavros/local_position/pose", PoseStamped, self.position_callback)
+        # self.local_pos=PoseStamped()
+        # # rospy.Subscriber(drone_name + "/mavros/local_position/pose", PoseStamped, self.position_callback)
+        # rospy.Subscriber(drone_name + "/mavros/local_position/pose", PoseStamped, self.position_callback)
 
-        global_pos = rospy.Publisher(publish_topic, PoseStamped,queue_size=1)
+        global_pos = rospy.Publisher(publish_topic, PoseWithCovarianceStamped,queue_size=1)
 
         rate = rospy.Rate(200.0)
 
@@ -34,21 +48,39 @@ class transform():
 
             cmd = PoseStamped()
 
-            cmd.pose.position.x=trans[0]+self.local_pos.pose.position.x
-            cmd.pose.position.y=trans[1]+self.local_pos.pose.position.y
-            cmd.pose.position.z=trans[2]+self.local_pos.pose.position.z
+            cmd.pose.position.x=trans[0] + self.x
+            cmd.pose.position.y=trans[1] + self.y
+            cmd.pose.position.z=trans[2] + self.z
 
-            cmd.pose.orientation.x=rot[0]+self.local_pos.pose.orientation.x
-            cmd.pose.orientation.y=rot[1]+self.local_pos.pose.orientation.y
-            cmd.pose.orientation.z=rot[2]+self.local_pos.pose.orientation.z
-            cmd.pose.orientation.w=rot[3]+self.local_pos.pose.orientation.w
+            cmd.pose.orientation.x=rot[0] + self.rx
+            cmd.pose.orientation.y=rot[1] + self.ry
+            cmd.pose.orientation.z=rot[2] + self.rz
+            cmd.pose.orientation.w=rot[3] + self.rw
 
             global_pos.publish(cmd)
 
             rate.sleep()
 
-    def position_callback(self,data):
-        self.local_pos=data
+    def callback_tf(self,data):
+        if data.transforms[0].header.frame_id == odom_frame_id:
+            self.y = data.transforms[0].transform.translation.y
+            self.x = data.transforms[0].transform.translation.x
+            self.z = data.transforms[0].transform.translation.z
+            self.rx = data.transforms[0].transform.rotation.x
+            self.ry = data.transforms[0].transform.rotation.y
+            self.rz = data.transforms[0].transform.rotation.z
+            self.rw = data.transforms[0].transform.rotation.w
+        else:
+            self.y = self.y
+            self.x = self.x
+            self.z = self.z
+            self.rx = self.rx
+            self.ry = self.ry
+            self.rz = self.rz
+
+
+    # def position_callback(self,data):
+    #     self.local_pos=data
 
 if __name__ == '__main__':
     rospy.init_node(drone_name+'_tf_transformer')
