@@ -7,6 +7,7 @@ import rospy
 import math
 import os
 from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
 import tf
 from tf2_msgs.msg import TFMessage
 
@@ -35,6 +36,9 @@ class transform():
         # # rospy.Subscriber(drone_name + "/mavros/local_position/pose", PoseStamped, self.position_callback)
         # rospy.Subscriber(drone_name + "/mavros/local_position/pose", PoseStamped, self.position_callback)
 
+        ## Alternative to /tf, Use Realsense Topic
+        # rospy.Subscriber(drone_name + "/t265/odom/sample", Odometry, self.position_callback)
+
         global_pos = rospy.Publisher(publish_topic, PoseWithCovarianceStamped,queue_size=1)
 
         rate = rospy.Rate(200.0)
@@ -52,10 +56,10 @@ class transform():
             cmd.pose.pose.position.y=trans[1] + self.y
             cmd.pose.pose.position.z=trans[2] + self.z
 
-            cmd.pose.pose.orientation.x=rot[0] + self.rx
-            cmd.pose.pose.orientation.y=rot[1] + self.ry
-            cmd.pose.pose.orientation.z=rot[2] + self.rz
-            cmd.pose.pose.orientation.w=rot[3] + self.rw
+            cmd.pose.pose.orientation.x=self.rx
+            cmd.pose.pose.orientation.y=self.ry
+            cmd.pose.pose.orientation.z=self.rz
+            cmd.pose.pose.orientation.w=self.rw
 
             global_pos.publish(cmd)
 
@@ -70,13 +74,13 @@ class transform():
             self.ry = data.transforms[0].transform.rotation.y
             self.rz = data.transforms[0].transform.rotation.z
             self.rw = data.transforms[0].transform.rotation.w
-        else:
-            self.y = self.y
-            self.x = self.x
-            self.z = self.z
-            self.rx = self.rx
-            self.ry = self.ry
-            self.rz = self.rz
+        # else:
+            # self.y = self.y
+            # self.x = self.x
+            # self.z = self.z
+            # self.rx = self.rx
+            # self.ry = self.ry
+            # self.rz = self.rz
 
 
     # def position_callback(self,data):

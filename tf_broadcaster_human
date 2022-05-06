@@ -52,23 +52,23 @@ class transform():
 
             cmd = PoseWithCovarianceStamped()
 
-            # cmd.pose.pose.position.x=self.local_pos.pose.pose.position.x
-            # cmd.pose.pose.position.y=self.local_pos.pose.pose.position.y
-            # cmd.pose.pose.position.z=self.local_pos.pose.pose.position.z
+            cmd.pose.pose.position.x=self.local_pos.pose.pose.position.x
+            cmd.pose.pose.position.y=self.local_pos.pose.pose.position.y
+            cmd.pose.pose.position.z=self.local_pos.pose.pose.position.z
 
-            # cmd.pose.pose.orientation.x=self.local_pos.pose.pose.orientation.x
-            # cmd.pose.pose.orientation.y=self.local_pos.pose.pose.orientation.y
-            # cmd.pose.pose.orientation.z=self.local_pos.pose.pose.orientation.z
-            # cmd.pose.pose.orientation.w=self.local_pos.pose.pose.orientation.w
+            cmd.pose.pose.orientation.x=self.local_pos.pose.pose.orientation.x
+            cmd.pose.pose.orientation.y=self.local_pos.pose.pose.orientation.y
+            cmd.pose.pose.orientation.z=self.local_pos.pose.pose.orientation.z
+            cmd.pose.pose.orientation.w=self.local_pos.pose.pose.orientation.w
 
-            cmd.pose.pose.position.x=9
-            cmd.pose.pose.position.y=0
-            cmd.pose.pose.position.z=0
+            # cmd.pose.pose.position.x=9
+            # cmd.pose.pose.position.y=0
+            # cmd.pose.pose.position.z=0
 
-            cmd.pose.pose.orientation.x=0
-            cmd.pose.pose.orientation.y=0
-            cmd.pose.pose.orientation.z=0
-            cmd.pose.pose.orientation.w=1
+            # cmd.pose.pose.orientation.x=0
+            # cmd.pose.pose.orientation.y=0
+            # cmd.pose.pose.orientation.z=0
+            # cmd.pose.pose.orientation.w=1
 
             global_pos.publish(cmd)
 
