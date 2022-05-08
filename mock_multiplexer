@@ -10,15 +10,15 @@ from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 import tf
 from tf2_msgs.msg import TFMessage
-from std_msgs.msg import Int32, Float64
+from std_msgs.msg import Int32, Float64, String
 
 class transform():
 
     def __init__(self):
 
         # Mode
-        self.mode = Int32()
-        rospy.Subscriber('/hri_mode', Int32, self.mode_callback)
+        self.mode = String()
+        rospy.Subscriber('/hri_mode', String, self.mode_callback)
 
         # Follow Me
         self.follow_me_pos = PoseWithCovarianceStamped() ########################
