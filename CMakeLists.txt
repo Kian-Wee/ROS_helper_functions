@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(tf_publisher)
+project(ROS_helper_functions)
 
 find_package(catkin REQUIRED COMPONENTS message_generation std_msgs)
 
