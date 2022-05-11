@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>tf_publisher</name>
+  <name>ROS_helper_functions</name>
   <version>0.1.0</version>
-  <description>tf publisher package</description>
+  <description>ros helper functions package</description>
 
   <maintainer email="you@yourdomain.tld">KW</maintainer>
   <license>BSD</license>
