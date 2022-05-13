@@ -1,0 +1,191 @@
+#!/usr/bin/env python
+# vim:set ts=4 sw=4 et:
+
+'''
+Benchmark positional accuracy of drone localisation using either
+1) Preset setpoints (define measured waypoints and leave it there) (UNCOMPLETE)
+2) External Optitrack Vicon (fly around for a duration)
+3) Manual setpoints (Keyed in in terminal)
+
+(WIP) Implement 3rd mode for 2) with automated waypoints
+'''
+
+
+import rospy
+import time
+import csv
+
+from math import *
+# from mavros.utils import *
+# from mavros import setpoint as SP
+from geometry_msgs.msg import PoseStamped #geometry
+import numpy as np
+
+
+
+position_validation_topic="/uav0/mavros/local_position/pose" #position given by sensor, PoseStamped format
+
+mode = 2 # 1 or 2 or 3, based on preset setpoints or vicon
+rate=10 #rosrate
+
+# Mode 1(preset setpoints settings)
+pos_array=[[0,0,0],[0,5,0],[5,0,0],[5,5,0]] # Manually iterate position throughout the array
+
+# Mode 1 / Mode 3 settings
+pos_test_duration=1 # Test accuracy for x seconds at position
+
+# Mode 2(automatic settings)
+ground_truth_topic="/vrpn_client_node/BorealisCoax/pose" #PoseStamped format
+test_duration=5 #seconds to test acuracy for
+
+# Output CSV File Name, saves to home(~) 
+outfile = 'out.csv'
+
+
+class benchmark:
+
+    def __init__(self):
+        
+        self.rate = rospy.Rate(rate)
+
+        self.position = PoseStamped()
+        rospy.Subscriber(position_validation_topic, PoseStamped , self.positioncallback)
+
+        if mode==1 or mode==3:
+            pass
+        elif mode==2:
+            self.truth_position = PoseStamped()
+            rospy.Subscriber(ground_truth_topic, PoseStamped , self.truthcallback)
+        else:
+            rospy.signal_shutdown("Invalid Mode, select 1 or 2")
+            
+
+        # # Save file on shutdown
+        # rospy.on_shutdown(self.save([]))
+
+        start_time=time.time()
+      
+        self.trutharr=[]
+        self.posarr=[]
+
+        while not rospy.is_shutdown(): #subsequent functions below are automatically run using this while loop (inert functions)  
+
+            if mode==1:
+                for i in pos_array:
+                    inp=raw_input("move to setpoint"+ str(i) + " and press enter: , press e to exit ")
+                    if inp=="e":
+                        rospy.signal_shutdown("Exiting measurements")
+                    else:
+                        while(time.time()<start_time+pos_test_duration):
+                            self.trutharr.append([i[0],i[1],i[2]])
+                            self.posarr.append([self.position.pose.position.x,self.position.pose.position.y,self.position.pose.position.z])
+                            # print([i[0]-self.position.x,i[1]-self.position.y,i[2]-self.position.z])
+                            self.rate.sleep()
+                        self.compare(self.posarr,self.trutharr)
+                        start_time=time.time()
+
+            elif mode==2:
+                if(time.time()<start_time+test_duration):
+                    self.trutharr.append([self.truth_position.pose.position.x,self.truth_position.pose.position.y,self.truth_position.pose.position.z])
+                    self.posarr.append([self.position.pose.position.x,self.position.pose.position.y,self.position.pose.position.z])
+                    # print([self.truth_position.x-self.position.x,self.truth_position.y-self.position.y,self.truth_position.z-self.position.z])
+                else:
+                    self.compare(self.posarr,self.trutharr)
+                    rospy.signal_shutdown("Finished Logging Data")
+
+            elif mode==3:
+                x,y,z=raw_input("Enter any new setpoint x y z; -1, -1, -1 to exit.   ").split()
+                start_time=time.time()
+
+                if x=="-1" and y=="-1" and z=="-1":
+                    rospy.signal_shutdown("Exiting measurements")
+                else:
+                    while(time.time()<start_time+pos_test_duration):
+                        self.trutharr.append([int(x),int(y),int(z)])
+                        self.posarr.append([self.position.pose.position.x,self.position.pose.position.y,self.position.pose.position.z])
+                        self.rate.sleep()
+                
+                self.compare(self.posarr,self.trutharr)
+                
+            self.rate.sleep()
+
+    def column(self, matrix, i):
+        return [row[i] for row in matrix]
+
+    # Compare data against ground truth
+    # Takes in truth and position data arrays as arguments, data=truth=[x,y,z]
+    # Captures minimum difference, maximum difference, standard deviation
+    def compare(self,data,truth):
+        arr=[]
+        minx=99999
+        miny=99999
+        minz=99999
+        mineu=99999
+        maxx=0
+        maxy=0
+        maxz=0
+        maxeu=0
+        for i in range(len(data)):
+            eu=sqrt((data[i][0]-truth[i][0])**2 + (data[i][1]-truth[i][1])**2 + (data[i][2]-truth[i][2])**2)
+            arr.append([data[i][0]-truth[i][0],data[i][1]-truth[i][1],data[i][2]-truth[i][2],eu])
+
+        for i in range(len(arr)):
+            minx=arr[i][0] if abs(arr[i][0])<minx else minx #sets minx to new minx if smaller else retains same value
+            miny=arr[i][1] if abs(arr[i][1])<miny else miny
+            minz=arr[i][2] if abs(arr[i][2])<minz else minz
+            mineu=arr[i][3] if abs(arr[i][3])<mineu else mineu
+            maxx=arr[i][0] if abs(arr[i][0])>maxx else maxx
+            maxy=arr[i][1] if abs(arr[i][1])>maxy else maxy
+            maxz=arr[i][2] if abs(arr[i][2])>maxz else maxz
+            maxeu=arr[i][3] if abs(arr[i][3])>maxeu else maxeu
+
+        np.average(np.asmatrix(np.array(self.column(arr,0))))
+
+        print('Min x-error is {}, Max x-error is {}, X Standard Deviation is {}, Average X-Error is {}'.format(minx,maxx,np.std(np.asmatrix(np.array(self.column(arr,0)))),np.average(np.asmatrix(np.array(self.column(arr,0)))))) # Grab column, convert to numpy array and then to numpy matrix and find standard deviation
+        print('Min y-error is {}, Max y-error is {}, Y Standard Deviation is {}, Average Y-Error is {}'.format(miny,maxy,np.std(np.asmatrix(np.array(self.column(arr,1)))),np.average(np.asmatrix(np.array(self.column(arr,1))))))
+        print('Min z-error is {}, Max z-error is {}, Z Standard Deviation is {}, Average Z-Error is {}'.format(minz,maxz,np.std(np.asmatrix(np.array(self.column(arr,2)))),np.average(np.asmatrix(np.array(self.column(arr,2))))))
+        print('Min EU-error is {}, Max EU-error is {}, EU Standard Deviation is {}, Average EU-Error is {}'.format(mineu,maxeu,np.std(np.asmatrix(np.array(self.column(arr,3)))),np.average(np.asmatrix(np.array(self.column(arr,3))))))
+
+        #combine and export data
+        combineddata=[["X","Y","Z","Ground X","Ground Y","Ground Z"]]
+        for i in range(len(data)):
+            combineddata.append([data[i][0],data[i][1],data[i][2],truth[i][0],truth[i][1],truth[i][2]])
+        self.save(combineddata)
+
+    def positioncallback(self,data): # callback invoked with the message as the first arg
+        self.position = data
+
+    def truthcallback(self,data): # callback invoked with the message as the first arg
+        self.truth_position = data
+
+    # saves to home(~)     
+    def save(self,arr):
+        print("Saving Array to %s", outfile)
+        # # wtr = csv.writer(open ('out.csv', 'w'), delimiter=',', lineterminator='\n') #~/Desktop/
+        # rmse=0
+        # print(arr)
+        # for x in range(1,len(arr)): #omit first column of headers
+        #     rmse+=arr[x][-1]
+        #     # wtr.writerow (self.totalarr[x])
+        #     # print("saving %s",x)
+        # rmse=sqrt(rmse/ (len(arr)-1))
+        # arr.append(rmse)
+        newarr = np.array(arr)
+        # print(newarr)
+
+        
+        # print("RMSE is {}".format(rmse))
+        np.savetxt("data.csv", newarr, delimiter=",", fmt='%s')
+        rospy.loginfo("Data Saved")
+
+
+if __name__ == '__main__':
+
+    rospy.init_node('benchmark_position', anonymous=True)
+
+    node = benchmark()
+
+    rospy.spin()
+     
+
+
