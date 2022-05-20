@@ -1,0 +1,147 @@
+#!/usr/bin/env python
+
+import rospy
+import math
+import os
+from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+from tf.transformations import euler_from_quaternion
+from tf2_msgs.msg import TFMessage
+from std_msgs.msg import Int32, Float64, String
+import numpy as np
+
+drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
+rate = 20 # Hz
+
+class multiplexer():
+
+    def __init__(self):
+
+        global rate
+
+        # Mode
+        self.mode = "" # Not using String(), save .data for ease of reading
+        self.prevmode = ""
+        rospy.Subscriber(drone_name + '/hri_mode', String, self.mode_callback)
+        self.yaw=0
+        rospy.Subscriber(drone_name + '/command/yaw', Float64, self.yaw_callback)
+
+        self.sweeparr=[]
+
+        # # Output for Sense&Avoid
+        drone_yaw_publisher = rospy.Publisher(drone_name + '/command/yaw/out', Float64,queue_size=1)
+
+        # Local Position Callback
+        self.uav_pos = uav()
+        rospy.Subscriber(drone_name + '/mavros/local_position/pose',  PoseStamped, self.local_position_callback)
+
+        self.rosrate=rospy.Rate(rate)
+
+        while not rospy.is_shutdown():
+
+            self.mode_manager(self.mode)
+
+            cmd = PoseStamped()
+
+            # Read Yaw command from HRI and send sweep command to Sense & Avoid
+            if self.mode=="Sweep":
+                desiredyaw=Float64()
+                desiredyaw = self.slowsweep(90) # Slows down the sweep command
+                print(desiredyaw)
+                drone_yaw_publisher.publish(desiredyaw)
+
+            else:
+                if self.mode=="Standby":
+                    print("In Standby Mode after Sweep")
+                else:
+                    print("No Mode or Invalid Mode")
+
+                cmd.pose.position.x=self.uav_pos.x
+                cmd.pose.position.y=self.uav_pos.y
+                cmd.pose.position.z=self.uav_pos.z
+
+                cmd.pose.orientation.x=self.uav_pos.rx
+                cmd.pose.orientation.y=self.uav_pos.ry
+                cmd.pose.orientation.z=self.uav_pos.rz
+                cmd.pose.orientation.w=self.uav_pos.rw
+            
+            
+
+            self.rosrate.sleep()
+
+    # Slows down sweep to a slower predefined speed, function is made to be non-blocking
+    # w is angular velocity in degrees per second
+    def slowsweep(self, angle, w=10):
+        global rate
+        if self.beginsweep==0:
+            (roll, pitch, yaw) = euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])
+            print("Yawing from {0} to {1}".format(yaw,angle) )
+            totaldeg=angle-yaw
+            numofsteps=round(totaldeg/w*rate)
+            self.sweeparr=[]
+            for i in np.arange(yaw, angle + totaldeg/numofsteps, totaldeg/numofsteps):
+                    self.sweeparr.append(i)
+            self.beginsweep=1
+        else:
+            if self.sweeparr==[]:
+                print("Sweep ended")
+                self.mode="Standby"
+                return angle
+        
+        desiredyaw=self.sweeparr[0]
+        self.sweeparr.pop(0)
+        return desiredyaw
+            
+
+    def local_position_callback(self,data):
+        self.uav_pos.x=data.pose.position.x
+        self.uav_pos.y=data.pose.position.y
+        self.uav_pos.z=data.pose.position.z
+        self.uav_pos.rx=data.pose.orientation.x
+        self.uav_pos.ry=data.pose.orientation.y
+        self.uav_pos.rz=data.pose.orientation.z
+        self.uav_pos.rw=data.pose.orientation.w
+
+    def mode_callback(self,msg):
+        self.mode=msg.data
+
+    def yaw_callback(self,msg):
+        self.yaw=msg.data
+
+    def mode_manager(self,mode):
+        if mode != self.prevmode:
+            if mode=="Follow_Me":
+                cmd=Int32()
+                cmd.data=1
+                self.teaming_pub_topic.publish(cmd)
+            elif mode=="Go There":
+                pass
+            elif mode=="Sweep":
+                self.beginsweep=0
+            elif mode=="Distract":
+                pass
+            else:
+                print("Invalid mode manager mode")
+        self.prevmode=mode
+
+    
+
+# UAV class to hold variables
+class uav():
+
+    def __init__(self):
+        self.x=0
+        self.y=0
+        self.z=0
+        self.rx=0
+        self.ry=0
+        self.rz=0
+        self.rw=0
+
+
+if __name__ == '__main__':
+    rospy.init_node(drone_name + '_Slow_Yaw')
+
+    node = multiplexer()
+
+    rospy.spin()

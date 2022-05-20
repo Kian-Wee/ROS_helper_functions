@@ -3,136 +3,213 @@
 ## Mode Manager Multiplexer to grab inputs and selectively rebroadcast outputs
   
 import os
+from cv2 import DescriptorMatcher_FLANNBASED
+
+from numpy import rate
 import rospy
 import math
 import os
 from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
-import tf
+from tf.transformations import euler_from_quaternion
 from tf2_msgs.msg import TFMessage
 from std_msgs.msg import Int32, Float64, String
+import numpy as np
 
 drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
+rate = 20 # Hz
 
 class multiplexer():
 
     def __init__(self):
 
+        global rate
+
         # Mode
         self.mode = "" # Not using String(), save .data for ease of reading
+        self.prevmode = ""
         rospy.Subscriber(drone_name + '/hri_mode', String, self.mode_callback)
 
-        # Follow Me
-        self.follow_me_pos = PoseWithCovarianceStamped() ########################
-        rospy.Subscriber(drone_name + '/uav_all/follow_me_target_pose',  PoseWithCovarianceStamped, self.position_callback)
+        # # Follow Me
+        # self.follow_me_pos = PoseWithCovarianceStamped() ########################
+        # rospy.Subscriber(drone_name + '/uav_all/follow_me_target_pose',  PoseWithCovarianceStamped, self.follow_me_callback)
 
-        # Go There
-        self.uav_go_there_pos = PoseWithCovarianceStamped()
-        rospy.Subscriber(drone_name + '/command/pose',  PoseWithCovarianceStamped, self.uav_go_there_callback)
-        self.uav_go_there_yaw = Float64()
-        rospy.Subscriber(drone_name + '/command/yaw',  Float64, self.uav_go_there_yaw_callback)
+        # # Go There
+        # self.uav_go_there_pos = PoseWithCovarianceStamped()
+        # rospy.Subscriber(drone_name + '/command/pose',  PoseWithCovarianceStamped, self.uav_go_there_callback)
+        # self.uav_go_there_yaw = Float64()
+        # rospy.Subscriber(drone_name + '/command/yaw',  Float64, self.uav_go_there_yaw_callback)
 
-        # Publish topic for planner
-        uav_publish_topic = drone_name + "/teaming_planner/assigned_virtual_position"
-        uav_publisher = rospy.Publisher(uav_publish_topic , PoseStamped,queue_size=1)
+        self.sweeparr=[]
+
+        # # Teaming Planner topics
+        # self.teaming_pub_topic = drone_name + "/teaming_planner/activate"
+        # teaming_publisher = rospy.Publisher(self.teaming_pub_topic , Int32,queue_size=1)
+        # teaming_position = PoseStamped()
+        # teaming_sub_topic = drone_name + "/teaming_planner/assigned_virtual_position"
+        # teaming_sub = rospy.Subscriber(drone_name + '/mavros/local_position/pose',  PoseStamped, self.teaming_planner_callback)
+        # # teaming_sub.unregister()
+        # # teaming_publisher.unregister()
+
+        # # Output for Sense&Avoid
+        drone_position_publisher = rospy.Publisher(drone_name + "/command/pose", PoseStamped,queue_size=1)
+        # drone_yaw_publisher = rospy.Publisher(drone_name + "/command/pose", Int32,queue_size=1)
+        # drone_mode_publisher = rospy.Publisher(drone_name + "/command/pose", Int32,queue_size=1)
+
 
         # Local Position Callback
-        self.uav_pos = PoseStamped()
-        rospy.Subscriber(drone_name + '/mavros/local_position/pose',  PoseStamped, self.uav_callback)
-        self.uav_go_there_pos.pose.pose.position.z=0 #initalise to 0 for takeover
+        self.uav_pos = uav()
+        rospy.Subscriber(drone_name + '/mavros/local_position/pose',  PoseStamped, self.local_position_callback)
 
-        rate = rospy.Rate(20.0)
+        prevcmd = PoseStamped()
+        self.rosrate=rospy.Rate(rate)
 
         while not rospy.is_shutdown():
+
+            self.mode_manager(self.mode)
 
             cmd = PoseStamped()
 
             # Send Information to Concensus Global Path or Formation Planner; When process if completed, send new waypoints to Sense & Avoid
             if self.mode=="Follow_Me":
-                # print("FM")
-                cmd.pose.position.x=self.follow_me_pos.pose.pose.position.x
-                cmd.pose.position.y=self.follow_me_pos.pose.pose.position.y
-                cmd.pose.position.z=self.follow_me_pos.pose.pose.position.z
+                print("FM")
+                # cmd.pose.position.x=self.follow_me_pos.pose.pose.position.x
+                # cmd.pose.position.y=self.follow_me_pos.pose.pose.position.y
+                # cmd.pose.position.z=self.follow_me_pos.pose.pose.position.z
 
-                cmd.pose.orientation.x=self.follow_me_pos.pose.pose.orientation.x
-                cmd.pose.orientation.y=self.follow_me_pos.pose.pose.orientation.y
-                cmd.pose.orientation.z=self.follow_me_pos.pose.pose.orientation.z
-                cmd.pose.orientation.w=self.follow_me_pos.pose.pose.orientation.w
+                # cmd.pose.orientation.x=self.follow_me_pos.pose.pose.orientation.x
+                # cmd.pose.orientation.y=self.follow_me_pos.pose.pose.orientation.y
+                # cmd.pose.orientation.z=self.follow_me_pos.pose.pose.orientation.z
+                # cmd.pose.orientation.w=self.follow_me_pos.pose.pose.orientation.w
 
             # Send waypoints from human directly to Sense & Avoid
             # MIGHT NEED TO STAGGER YAW ALSO
             elif self.mode=="Go_There":
-                # print("GT")
-                # If there is go there position sent, go to
-                if self.uav_go_there_pos.pose.pose.position.z != 0:
-                    cmd.pose.position.x=self.uav_go_there_pos.pose.pose.position.x
-                    cmd.pose.position.y=self.uav_go_there_pos.pose.pose.position.y
-                    cmd.pose.position.z=1
+                print("GT")
+                # # If there is go there position sent, go to
+                # if self.uav_go_there_pos.pose.pose.position.z != 0:
+                #     cmd.pose.position.x=self.uav_go_there_pos.pose.pose.position.x
+                #     cmd.pose.position.y=self.uav_go_there_pos.pose.pose.position.y
+                #     cmd.pose.position.z=1
 
-                    cmd.pose.orientation.x=self.uav_go_there_pos.pose.pose.orientation.x
-                    cmd.pose.orientation.y=self.uav_go_there_pos.pose.pose.orientation.y
-                    cmd.pose.orientation.z=self.uav_go_there_pos.pose.pose.orientation.z
-                    cmd.pose.orientation.w=self.uav_go_there_pos.pose.pose.orientation.w
-                # If there is no position sent yet, hover at current spot
-                else:
-                    cmd.pose.position.x=self.uav_pos.pose.position.x
-                    cmd.pose.position.y=self.uav_pos.pose.position.y
-                    cmd.pose.position.z=self.uav_pos.pose.position.z
+                #     cmd.pose.orientation.x=self.uav_go_there_pos.pose.pose.orientation.x
+                #     cmd.pose.orientation.y=self.uav_go_there_pos.pose.pose.orientation.y
+                #     cmd.pose.orientation.z=self.uav_go_there_pos.pose.pose.orientation.z
+                #     cmd.pose.orientation.w=self.uav_go_there_pos.pose.pose.orientation.w
+                # # If there is no position sent yet, hover at current spot
+                # else:
+                #     cmd.pose.position.x=self.uav_pos.x
+                #     cmd.pose.position.y=self.uav_pos.y
+                #     cmd.pose.position.z=self.uav_pos.z
 
-                    cmd.pose.orientation.x=self.uav_pos.pose.orientation.x
-                    cmd.pose.orientation.y=self.uav_pos.pose.orientation.y
-                    cmd.pose.orientation.z=self.uav_pos.pose.orientation.z
-                    cmd.pose.orientation.w=self.uav_pos.pose.orientation.w
+                #     cmd.pose.orientation.x=self.uav_pos.rx
+                #     cmd.pose.orientation.y=self.uav_pos.ry
+                #     cmd.pose.orientation.z=self.uav_pos.rz
+                #     cmd.pose.orientation.w=self.uav_pos.rw
 
             # Read Yaw command from HRI and send sweep command to Sense & Avoid
             elif self.mode=="Sweep":
-                self.beginsweep() # Slows down the sweep command
-                pass
-
+                desiredyaw = math.radians(self.slowsweep(90)) # Slows down the sweep command
+                print(desiredyaw)
             elif self.mode=="Distract":
                 pass
 
-
             else:
-                print("No Mode or Invalid Mode")
+                if self.mode=="Standby":
+                    print("In Standby Mode after Sweep")
+                else:
+                    print("No Mode or Invalid Mode")
 
-                cmd.pose.position.x=self.uav_pos.pose.position.x
-                cmd.pose.position.y=self.uav_pos.pose.position.y
-                cmd.pose.position.z=self.uav_pos.pose.position.z
+                cmd.pose.position.x=self.uav_pos.x
+                cmd.pose.position.y=self.uav_pos.y
+                cmd.pose.position.z=self.uav_pos.z
 
-                cmd.pose.orientation.x=self.uav_pos.pose.orientation.x
-                cmd.pose.orientation.y=self.uav_pos.pose.orientation.y
-                cmd.pose.orientation.z=self.uav_pos.pose.orientation.z
-                cmd.pose.orientation.w=self.uav_pos.pose.orientation.w
+                cmd.pose.orientation.x=self.uav_pos.rx
+                cmd.pose.orientation.y=self.uav_pos.ry
+                cmd.pose.orientation.z=self.uav_pos.rz
+                cmd.pose.orientation.w=self.uav_pos.rw
                 
+            # Always publish the pose, but only print if the pose differs
+            if prevcmd != cmd:
+                print(self.mode,[cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z])
+            drone_position_publisher.publish(cmd)
 
+            self.rosrate.sleep()
 
-            print(self.mode,[cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z])
-            uav_publisher.publish(cmd)
+    # Slows down sweep to a slower predefined speed, function is made to be non-blocking
+    # w is angular velocity in degrees per second
+    def slowsweep(self, angle, w=10):
+        global rate
+        if self.beginsweep==0:
+            (roll, pitch, yaw) = euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])
+            print("Yawing from {0} to {1}".format(yaw,angle) )
+            totaldeg=angle-yaw
+            numofsteps=round(totaldeg/w*rate)
+            self.sweeparr=[]
+            for i in np.arange(yaw, angle + totaldeg/numofsteps, totaldeg/numofsteps):
+                    self.sweeparr.append(i)
+            self.beginsweep=1
+        else:
+            if self.sweeparr==[]:
+                print("Sweep ended")
+                self.mode="Standby"
+                return angle
+        
+        desiredyaw=self.sweeparr[0]
+        self.sweeparr.pop(0)
+        return desiredyaw
+            
 
-            rate.sleep()
+    def local_position_callback(self,data):
+        self.uav_pos.x=data.pose.position.x
+        self.uav_pos.y=data.pose.position.y
+        self.uav_pos.z=data.pose.position.z
+        self.uav_pos.rx=data.pose.orientation.x
+        self.uav_pos.ry=data.pose.orientation.y
+        self.uav_pos.rz=data.pose.orientation.z
+        self.uav_pos.rw=data.pose.orientation.w
 
-    # Slows down sweep to a managable speed
-    def beginsweep(self):
-        pass
-
-    def position_callback(self,data):
-        self.follow_me_pos=data
-
-    def mode_callback(self,data):
-        self.mode=data.data
+    def mode_callback(self,msg):
+        self.mode=msg.data
 
     def uav_go_there_callback(self,data):
         self.uav_go_there_pos=data
 
-    
     def uav_go_there_yaw_callback(self,data):
         self.uav_go_there_pos=data
     
     def uav_callback(self,data):
         self.uav_pos=data
+
+    def mode_manager(self,mode):
+        if mode != self.prevmode:
+            if mode=="Follow_Me":
+                cmd=Int32()
+                cmd.data=1
+                self.teaming_pub_topic.publish(cmd)
+            elif mode=="Go There":
+                pass
+            elif mode=="Sweep":
+                self.beginsweep=0
+            elif mode=="Distract":
+                pass
+            else:
+                print("Invalid mode manager mode")
+        self.prevmode=mode
+
     
 
+# UAV class to hold variables
+class uav():
+
+    def __init__(self):
+        self.x=0
+        self.y=0
+        self.z=0
+        self.rx=0
+        self.ry=0
+        self.rz=0
+        self.rw=0
 
 
 if __name__ == '__main__':
