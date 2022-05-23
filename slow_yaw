@@ -7,7 +7,7 @@ from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
 from tf2_msgs.msg import TFMessage
-from std_msgs.msg import Int32, Float64, String
+from std_msgs.msg import Int32, Float64, String, Bool
 import numpy as np
 
 drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
@@ -22,7 +22,7 @@ class multiplexer():
         # Mode
         self.mode = "" # Not using String(), save .data for ease of reading
         self.prevmode = ""
-        rospy.Subscriber(drone_name + '/hri_mode', String, self.mode_callback)
+        rospy.Subscriber(drone_name + '/sweep', Bool, self.mode_callback)
         self.yaw=0
         rospy.Subscriber(drone_name + '/command/yaw', Float64, self.yaw_callback)
 
@@ -44,17 +44,13 @@ class multiplexer():
             cmd = PoseStamped()
 
             # Read Yaw command from HRI and send sweep command to Sense & Avoid
-            if self.mode=="Sweep":
+            if self.mode==1:
                 desiredyaw=Float64()
                 desiredyaw = self.slowsweep(90) # Slows down the sweep command
                 print(desiredyaw)
                 drone_yaw_publisher.publish(desiredyaw)
 
             else:
-                if self.mode=="Standby":
-                    print("In Standby Mode after Sweep")
-                else:
-                    print("No Mode or Invalid Mode")
 
                 cmd.pose.position.x=self.uav_pos.x
                 cmd.pose.position.y=self.uav_pos.y
@@ -104,24 +100,16 @@ class multiplexer():
 
     def mode_callback(self,msg):
         self.mode=msg.data
+        print(self.mode)
 
     def yaw_callback(self,msg):
         self.yaw=msg.data
+        
 
     def mode_manager(self,mode):
         if mode != self.prevmode:
-            if mode=="Follow_Me":
-                cmd=Int32()
-                cmd.data=1
-                self.teaming_pub_topic.publish(cmd)
-            elif mode=="Go There":
-                pass
-            elif mode=="Sweep":
+            if mode==1:
                 self.beginsweep=0
-            elif mode=="Distract":
-                pass
-            else:
-                print("Invalid mode manager mode")
         self.prevmode=mode
 
     
