@@ -10,14 +10,16 @@ from tf2_msgs.msg import TFMessage
 from std_msgs.msg import Int32, Float64, String, Bool
 import numpy as np
 
-drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
-rate = 20 # Hz
 
-class multiplexer():
+
+class slow_yaw():
 
     def __init__(self):
 
+        # drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
+        drone_name = "uav1"
         global rate
+        rate = 20 # Hz
 
         # Mode
         self.mode = "" # Not using String(), save .data for ease of reading
@@ -29,10 +31,10 @@ class multiplexer():
         self.sweeparr=[]
 
         # # Output for Sense&Avoid
-        drone_yaw_publisher = rospy.Publisher(drone_name + '/command/yaw/out', Float64,queue_size=1)
+        drone_yaw_publisher = rospy.Publisher(drone_name + '/command/yaw/in', Float64,queue_size=1)
 
         # Local Position Callback
-        self.uav_pos = uav()
+        self.uav_pos = uav_variables()
         rospy.Subscriber(drone_name + '/mavros/local_position/pose',  PoseStamped, self.local_position_callback)
 
         self.rosrate=rospy.Rate(rate)
@@ -46,7 +48,7 @@ class multiplexer():
             # Read Yaw command from HRI and send sweep command to Sense & Avoid
             if self.mode==1:
                 desiredyaw=Float64()
-                desiredyaw = self.slowsweep(90) # Slows down the sweep command
+                desiredyaw = self.slowsweep(self.yaw) # Slows down the sweep command
                 print(desiredyaw)
                 drone_yaw_publisher.publish(desiredyaw)
 
@@ -75,14 +77,20 @@ class multiplexer():
             totaldeg=angle-yaw
             numofsteps=round(totaldeg/w*rate)
             self.sweeparr=[]
-            for i in np.arange(yaw, angle + totaldeg/numofsteps, totaldeg/numofsteps):
+            if abs(angle-yaw) < 1: # Dont sweep if the angle is too small
+                print("angle too small, not sweeping")
+            elif angle>yaw: # If angle is positive
+                for i in np.arange(yaw, angle + totaldeg/numofsteps, totaldeg/numofsteps):
+                    self.sweeparr.append(i)
+            else: # If angle is negative
+                for i in np.arange(yaw, angle - totaldeg/numofsteps, -totaldeg/numofsteps):
                     self.sweeparr.append(i)
             self.beginsweep=1
-        else:
-            if self.sweeparr==[]:
-                print("Sweep ended")
-                self.mode="Standby"
-                return angle
+
+        if self.sweeparr==[]:
+            print("Sweep ended")
+            self.mode="Standby"
+            return angle
         
         desiredyaw=self.sweeparr[0]
         self.sweeparr.pop(0)
@@ -100,12 +108,10 @@ class multiplexer():
 
     def mode_callback(self,msg):
         self.mode=msg.data
-        print(self.mode)
 
     def yaw_callback(self,msg):
         self.yaw=msg.data
         
-
     def mode_manager(self,mode):
         if mode != self.prevmode:
             if mode==1:
@@ -115,7 +121,7 @@ class multiplexer():
     
 
 # UAV class to hold variables
-class uav():
+class uav_variables():
 
     def __init__(self):
         self.x=0
@@ -128,8 +134,9 @@ class uav():
 
 
 if __name__ == '__main__':
+    drone_name = os.getenv('DRONE_NAME')
     rospy.init_node(drone_name + '_Slow_Yaw')
 
-    node = multiplexer()
+    node = slow_yaw()
 
     rospy.spin()
