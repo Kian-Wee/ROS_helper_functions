@@ -1,0 +1,493 @@
+#!/usr/bin/env python
+
+# Evolution of the mock multiplexer code to support a variable amount of drones(WIP)
+# Implements proper tracking of human breadcrumbs and staggers the waypoints for more reliable behaviour
+# Checks validity of setpoints by seeing if its within the safety boundary of a human
+# Check for setpoint in occupancy map?(TODO)
+
+# Helpful info https://docs.px4.io/v1.12/en/flight_modes/offboard.html
+
+from typing import final
+import rospy
+from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+from std_msgs.msg import Int32, Float64, String
+import math
+from tf.transformations import euler_from_quaternion
+import numpy as np
+
+num_uav = 2 # Total Number of UAVs (WIP, Automatic detection not implemented yet)
+drone_barrier = 2 # meters drone keep away from each other
+human_barrier = 3 # meters to keep away from human
+
+class multiplexer():
+
+    def __init__(self):
+
+        # Mode
+        self.mode = String()
+        rospy.Subscriber('/hri_mode', String, self.mode_callback)
+        self.prevmode=""
+
+        # Follow Me
+        self.human_pos = PoseWithCovarianceStamped()
+        rospy.Subscriber('/HumanPose',  PoseWithCovarianceStamped, self.position_callback)
+        # rospy.Subscriber('/uav_all/follow_me_target_pose',  PoseWithCovarianceStamped, self.position_callback)
+        self.follow_me_arr=[]
+        self.assigned_pos=0 # The number x drone which is assigned to this position, the loop runs through until all the drones are assigned
+
+        # Automatic Initalisation(WIP)
+        # # For every drone, initalise a posestamped command and a uav() class instance
+        # for i in range(1,num_uav+1):
+        #     locals()["cmd" + str(i)] = PoseStamped()
+        #     locals()["prevcmd" + str(i)] = PoseStamped()
+        #     print(locals().get("cmd" + str(i)))
+        #     locals()["uav" + str(i)] = uav()
+        #     locals().get("cmd" + str(i)).__init__(i)
+
+        # Manual Initalisation
+        cmd1=PoseStamped()
+        prevcmd1=PoseStamped()
+        self.uav1=uav(1)
+        cmd2=PoseStamped()
+        prevcmd2=PoseStamped()
+        self.uav2=uav(2)
+
+        global rate
+        rate = rospy.Rate(20.0)
+
+        while not rospy.is_shutdown():
+
+            if self.mode=="Follow_Me":
+                # print("FM")
+
+                # Reimplemented in a new function
+                self.formation_planner()
+
+            # In Go There mode, there the setpoints are passed through to the drones, no intervention is needed
+            # TODO, implement position checking
+            elif self.mode=="Go_There":
+                # print("GT")
+                self.assigned_pos=0 # Reset the follow me assigned positions so that it recaculates the follow me path after mode switch
+
+                # If there is go there position sent, go to
+                if self.uav1.go_there_pos.pose.pose.position.z != 0:
+                    cmd1.pose.position.x=self.uav1.go_there_pos.pose.pose.position.x
+                    cmd1.pose.position.y=self.uav1.go_there_pos.pose.pose.position.y
+                    cmd1.pose.position.z=1.3
+
+                    cmd1.pose.orientation.x=self.uav1.go_there_pos.pose.pose.orientation.x
+                    cmd1.pose.orientation.y=self.uav1.go_there_pos.pose.pose.orientation.y
+                    cmd1.pose.orientation.z=self.uav1.go_there_pos.pose.pose.orientation.z
+                    cmd1.pose.orientation.w=self.uav1.go_there_pos.pose.pose.orientation.w
+                # If there is no position sent yet, hover at current spot
+                else:
+                    cmd1.pose.position.x=self.uav1.x
+                    cmd1.pose.position.y=self.uav1.y
+                    cmd1.pose.position.z=self.uav1.z
+
+                    cmd1.pose.orientation.x=self.uav1.rx
+                    cmd1.pose.orientation.y=self.uav1.ry
+                    cmd1.pose.orientation.z=self.uav1.rz
+                    cmd1.pose.orientation.w=self.uav1.rw
+
+                #-------------------------------------------------------------------------------
+
+                # If there is go there position sent, go to
+                if self.uav2.go_there_pos.pose.pose.position.z != 0:
+                    cmd2.pose.position.x=self.uav2.go_there_pos.pose.pose.position.x
+                    cmd2.pose.position.y=self.uav2.go_there_pos.pose.pose.position.y
+                    cmd2.pose.position.z=1.3
+                    cmd2.pose.orientation.x=self.uav2.go_there_pos.pose.pose.orientation.x
+                    cmd2.pose.orientation.y=self.uav2.go_there_pos.pose.pose.orientation.y
+                    cmd2.pose.orientation.z=self.uav2.go_there_pos.pose.pose.orientation.z
+                    cmd2.pose.orientation.w=self.uav2.go_there_pos.pose.pose.orientation.w
+                # If there is no position sent yet, hover at current spot
+                else:
+                    cmd2.pose.position.x=self.uav2.x
+                    cmd2.pose.position.y=self.uav2.y
+                    cmd2.pose.position.z=self.uav2.z
+
+                    cmd2.pose.orientation.x=self.uav2.rx
+                    cmd2.pose.orientation.y=self.uav2.ry
+                    cmd2.pose.orientation.z=self.uav2.rz
+                    cmd2.pose.orientation.w=self.uav2.rw
+
+            else:
+                # print("No Mode")
+                self.mode="No Mode"
+                
+                cmd1.pose.position.x=self.uav1.x
+                cmd1.pose.position.y=self.uav1.y
+                cmd1.pose.position.z=self.uav1.z
+
+                cmd1.pose.orientation.x=self.uav1.rx
+                cmd1.pose.orientation.y=self.uav1.ry
+                cmd1.pose.orientation.z=self.uav1.rz
+                cmd1.pose.orientation.w=self.uav1.rw
+
+                cmd2.pose.position.x=self.uav2.x
+                cmd2.pose.position.y=self.uav2.y
+                cmd2.pose.position.z=self.uav2.z
+
+                cmd2.pose.orientation.x=self.uav2.rx
+                cmd2.pose.orientation.y=self.uav2.ry
+                cmd2.pose.orientation.z=self.uav2.rz
+                cmd2.pose.orientation.w=self.uav2.rw
+
+            # # Automatic Printing of current flight command
+            # for i in range(1,num_uav+1):
+            #     if locals().get("cmd" + str(i)) != locals().get("prevcmd" + str(i)):
+            #         print(self.mode)
+            #         print("1:",locals().get("cmd" + str(i)).pose.position.x)
+            #         # locals().get("prevcmd" + str(i)) = locals().get("cmd" + str(i))
+
+            # Manual Printing of current flight command, doesnt check for yaw change cause it assumes that position will never be exactly the same
+            self.uav1.publishuav(cmd1)
+            self.uav2.publishuav(cmd2)
+            if cmd1 != prevcmd1 or cmd2 != prevcmd2 or self.mode != self.prevmode:
+                prevcmd1 = cmd1
+                prevcmd2 = cmd2
+                self.prevmode=self.mode
+                print(self.mode)
+                print("1:",[cmd1.pose.position.x,cmd1.pose.position.y,cmd1.pose.position.z,self.uav1.go_there_yaw.data])
+                print("2:",[cmd2.pose.position.x,cmd2.pose.position.y,cmd2.pose.position.z,self.uav2.go_there_yaw.data])
+
+            rate.sleep()
+
+
+    def position_callback(self,data):
+        self.human_pos=data
+
+    def mode_callback(self,data):
+        self.mode=data.data
+
+
+    # Determine the distance from each drone to the target
+    def drone_dist(self, x, y):
+
+        # Automatic method(WIP)
+
+
+        # Manual method
+        return self.eu_dist([x,self.uav1.x],[y,self.uav1.y]) , self.eu_dist([x,self.uav2.x],[y,self.uav2.y])
+
+    # Find eucalidean distance between 2 points, ignores z atm due to drift
+    # Takes in x and y array of length 2
+    def eu_dist(self,xarr,yarr):
+        return math.sqrt( (xarr[0]-xarr[1])**2 + (yarr[0]-yarr[1])**2 )
+
+
+    # Operates drone in formation, Currently to either a long line or clustered triangle pattern
+    # Checks if the desired formation can be attained and sends the drone to the respective spots
+    # Returns the desired position of both of the drones
+    # TODO, implement go to positions by minimising cost(eu distance), (doesnt accout for which drone goes first in more complex scenarios)<
+    def formation_planner(self, pattern="line"):
+        
+        # Accumulates points, only accumulates in follow me mode
+        self.follow_me()
+
+        # TODO, double check instance variables in a function
+        
+
+        # Automatic method(WIP)
+
+
+
+        # Manual Method
+        # TODO, change to ordered dictionary, perhaps implementation might be to take a list of drone positions and manually pop each one after it has been assigned allowing it to be recursive
+        final_pos=[[],[]] # Array of all the final positions of each drone in formation
+        assignment_order=[] # Array of drones which dictate which drone i at the front of the pack
+        if pattern=="line" and self.assigned_pos!= num_uav:
+            if self.follow_me_arr != []:
+                for i in self.follow_me_arr: # This for loop iterates though the previous poses of the human, from the most recent to the most dated and allocates a position whenever permissable, allowing for an arbitrarly large number of drones(if rewritten)
+                    # Assign first position
+                    # self.eu_dist([i[0],self.human_pos.pose.pose.position.x], [i[1],self.human_pos.pose.pose.position.y]) > human_barrier 
+                    if self.assigned_pos==0 and self.check_position(i[0],i[1], -1, False)==True:
+                        # Goes through the first waypoint and checks which drone is closer
+                        min_dist_arr = self.drone_dist(i[0],i[1])
+                        array_pos = min_dist_arr.index(min(min_dist_arr))
+                        final_pos[array_pos] = [i[0],i[1]] # Assign first position
+                        assignment_order.append(array_pos) # temp
+                        self.assigned_pos=1
+                    elif self.assigned_pos==1 and self.check_position(i[0],i[1], -1, False)==True:
+                        # print("checking second point")
+                        # Check which drone is assigned and assigned the other drone
+                        for j in final_pos:
+                            if j == []: # TODO, check which drone is closer and assign that drone; currently just assign first for testing
+                                second_pos = final_pos.index(j)
+                                assignment_order.append(second_pos)
+                                final_pos[second_pos]=[i[0],i[1]]
+                                self.assigned_pos=2
+
+                if self.assigned_pos != num_uav:
+                    rospy.loginfo("Only %s drones have been assigned locations, human needs to walk further", self.assigned_pos)
+                else:
+                    rospy.loginfo("Finished assigning all drones to each position")
+                        
+            else:
+                rospy.loginfo("Tried to go into line formation but human has not walked enough yet")
+
+        # After line position has been determined, send the fix the position of each drone in the line and wait for position to be valid
+        # This is done by iterating in the opposite direction from the drone assignment, starting from the furthest drone(to the human) to the closest drone(to the human)
+        # This inches each drone closer to the drone/human infront and gradually assigns every drone in a path like function
+        elif pattern=="line":
+            print("Assigning follow me in line")
+
+            for i in reversed(self.follow_me_arr):
+                
+                if self.at_position(final_pos[]) self.check_position(i)
+        
+        else:
+            rospy.logfatal("Invalid pattern")
+
+        # Check if any of the follow me positions are not yet assigned and assign the drone to hold
+        for i in final_pos:
+            if i == []:
+                if final_pos.index(i)==0:
+                    final_pos[final_pos.index(i)]=[self.uav1.x,self.uav1.y]
+                if final_pos.index(i)==1:
+                    final_pos[final_pos.index(i)]=[self.uav2.x,self.uav2.y]
+
+        return self.follow_me_arr
+        
+
+
+
+    # Accumulates breadcrumb of human, returns list of positions for drone to go to
+    # The latest position is appended at the end while the oldest position is appended at the front
+    # The points only accumulate if the human is moving. If the human is not moving or hasnt walked far enough, self.formation_planner takes over
+    def follow_me(self, max_points=20, setpt_dist=1):
+
+        # Accumulate first starting point
+        if self.follow_me_arr == []:
+             self.follow_me_arr.append([self.human_pos.pose.pose.position.x,self.human_pos.pose.pose.position.y])
+        # accumulate new points
+        elif self.eu_dist([self.human_pos.pose.pose.position.x,self.follow_me_arr[0][0]],[self.human_pos.pose.pose.position.y,self.follow_me_arr[0][1]]) > setpt_dist:
+            
+            # print(self.eu_dist([self.human_pos.pose.pose.position.x,self.follow_me_arr[-1][0]],[self.human_pos.pose.pose.position.y,self.follow_me_arr[-1][1]]))
+
+            # Array less than max points, accumulate array
+            if(len(self.follow_me_arr)<max_points):
+                self.follow_me_arr.insert(0,[self.human_pos.pose.pose.position.x,self.human_pos.pose.pose.position.y])
+            # Array at max points, append and pop
+            else:
+                self.follow_me_arr.insert(0,[self.human_pos.pose.pose.position.x,self.human_pos.pose.pose.position.y])
+                self.follow_me_arr.pop(-1)
+        
+    # Check if the desired setpoint is in the way of the other drone or in the human, -1 checks all drones
+    # Returns True if the position is valid
+    def check_position(self, x, y, drone=-1, debug=True):
+        
+        # Automatic (WIP)
+        
+
+
+        # Manual
+        if drone==1:
+            if self.eu_dist([x,self.uav2.x],[y,self.uav2.y]) < drone_barrier and self.eu_dist([x,self.human_pos.pose.pose.position.x],[y,self.human_pos.pose.pose.position.y]) < human_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the other drone(%s, %s) and the human(%s, %s)", x, y, self.uav2.x, self.uav2.y, self.human_pos.pose.pose.position.x, self.human_pos.pose.pose.position.y)
+                return False
+            elif self.eu_dist([x,self.uav2.x],[y,self.uav2.y]) < drone_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the other drone(%s, %s)", x, y, self.uav2.x, self.uav2.y)
+                return False
+            elif self.eu_dist([x,self.human_pos.pose.pose.position.x],[y,self.human_pos.pose.pose.position.y]) < human_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the human(%s, %s)", x, y, self.human_pos.pose.pose.position.x, self.human_pos.pose.pose.position.y)
+                return False
+            else:
+                return True
+        elif drone==2:
+            if self.eu_dist([x,self.uav1.x],[y,self.uav1.y]) < drone_barrier and self.eu_dist([x,self.human_pos.pose.pose.position.x],[y,self.human_pos.pose.pose.position.y]) < human_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the other drone(%s, %s) and the human(%s, %s)", x, y, self.uav1.x, self.uav1.y, self.human_pos.pose.pose.position.x, self.human_pos.pose.pose.position.y)
+                return False
+            elif self.eu_dist([x,self.uav1.x],[y,self.uav1.y]) < drone_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the other drone(%s, %s)", x, y, self.uav1.x, self.uav1.y)
+                return False
+            elif self.eu_dist([x,self.human_pos.pose.pose.position.x],[y,self.human_pos.pose.pose.position.y]) < human_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the human(%s, %s)", x, y, self.human_pos.pose.pose.position.x, self.human_pos.pose.pose.position.y)
+                return False
+            else:
+                return True
+        elif drone==-1:
+            if self.eu_dist([x,self.uav2.x],[y,self.uav2.y]) < drone_barrier and self.eu_dist([x,self.human_pos.pose.pose.position.x],[y,self.human_pos.pose.pose.position.y]) < human_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the other drone(%s, %s) and the human(%s, %s)", x, y, self.uav2.x, self.uav2.y, self.human_pos.pose.pose.position.x, self.human_pos.pose.pose.position.y)
+                return False
+            elif self.eu_dist([x,self.uav2.x],[y,self.uav2.y]) < drone_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the other drone(%s, %s)", x, y, self.uav2.x, self.uav2.y)
+                return False
+            elif self.eu_dist([x,self.human_pos.pose.pose.position.x],[y,self.human_pos.pose.pose.position.y]) < human_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the human(%s, %s)", x, y, self.human_pos.pose.pose.position.x, self.human_pos.pose.pose.position.y)
+                return False
+            elif self.eu_dist([x,self.uav1.x],[y,self.uav1.y]) < drone_barrier and self.eu_dist([x,self.human_pos.pose.pose.position.x],[y,self.human_pos.pose.pose.position.y]) < human_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the other drone(%s, %s) and the human(%s, %s)", x, y, self.uav1.x, self.uav1.y, self.human_pos.pose.pose.position.x, self.human_pos.pose.pose.position.y)
+                return False
+            elif self.eu_dist([x,self.uav1.x],[y,self.uav1.y]) < drone_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the other drone(%s, %s)", x, y, self.uav1.x, self.uav1.y)
+                return False
+            elif self.eu_dist([x,self.human_pos.pose.pose.position.x],[y,self.human_pos.pose.pose.position.y]) < human_barrier:
+                if debug == True: rospy.logfatal("Setpoint %s, %s is too close to the human(%s, %s)", x, y, self.human_pos.pose.pose.position.x, self.human_pos.pose.pose.position.y)
+                return False
+            else:
+                return True
+        else:
+            rospy.logfatal("Drone Number currently not implemented yet")
+            return False
+
+    # Check if drone is at location (within threshold of 0.5m)
+    def at_position(self, x, y, drone, threshold=0.5):
+        
+        # Automatic (WIP)
+        
+
+
+        # Manual
+        if drone==1:
+            if self.eu_dist([x,self.uav1.x],[y,self.uav1.y]) < threshold:
+                return True
+            else:
+                return False
+        elif drone==2:
+            if self.eu_dist([x,self.uav2.x],[y,self.uav2.y]) < threshold:
+                return True
+            else:
+                return False
+        else:
+            rospy.logfatal("Drone Number currently not implemented yet, cant check if it is at position")
+            return False
+
+
+
+# UAV Class to hold the position and each of the instances
+class uav():
+
+    def __init__(self, uav_number=0):
+
+        # self.prevcmd = PoseStamped()
+
+        self.uav_number=uav_number
+
+        # Go There
+        self.go_there_pos = PoseWithCovarianceStamped()
+        rospy.Subscriber('/uav' + str(uav_number) + '/command/pose',  PoseWithCovarianceStamped, self.uav_go_there_callback)
+        self.go_there_yaw = Float64()
+        rospy.Subscriber('/uav' + str(uav_number) + '/command/yaw',  Float64, self.uav_go_there_yaw_callback)
+        self.uav_yaw_publisher = rospy.Publisher('/uav' +  str(uav_number) + '/command/yaw/out' , Float64,queue_size=1)
+
+        # Publish topic for planner
+        uav_publish_topic = '/uav' + str(uav_number) + '/teaming_planner/assigned_virtual_position'
+        self.uav_publisher = rospy.Publisher(uav_publish_topic , PoseStamped,queue_size=1)
+
+        # Local Position Callback
+        self.uav_pos = PoseStamped()
+        rospy.Subscriber('/uav' + str(uav_number) + '/mavros/local_position/pose',  PoseStamped, self.uav_callback)
+
+        # Variable must be declared as an instance variable (self.variable) in init for it to be recognised
+        self.x=0
+        self.y=0
+        self.z=0
+        self.rx=0
+        self.ry=0
+        self.rz=0
+        self.rw=0
+
+    def uav_callback(self,data):
+
+        self.x=data.pose.position.x
+        self.y=data.pose.position.y
+        self.z=data.pose.position.z
+        self.rx=data.pose.orientation.x
+        self.ry=data.pose.orientation.y
+        self.rz=data.pose.orientation.z 
+        self.rw=data.pose.orientation.w
+
+    def uav_go_there_yaw_callback(self,data):
+        self.go_there_yaw=data.data
+   
+    def uav_go_there_callback(self,data):
+        self.go_there_pos=data
+
+    def publishuav(self, cmd):
+        cmd.header.frame_id="odom"
+        # if cmd != self.prevcmd:
+        #     print(self.uav_number,[cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z,self.uav_go_there_yaw])
+        #     self.prevcmd=cmd
+        self.uav_publisher.publish(cmd)
+        self.uav_yaw_publisher.publish(self.go_there_yaw)
+
+        # Slows down sweep to a slower predefined speed, function is made to be non-blocking
+    # w is angular velocity in degrees per second
+    def slowsweep(self, angle, w=10):
+        global rate
+        if self.beginsweep==0:
+            (roll, pitch, yaw) = euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])
+            print("Yawing from {0} to {1}".format(yaw,angle) )
+            totaldeg=angle-yaw
+            numofsteps=round(totaldeg/w*rate)
+            self.sweeparr=[]
+            for i in np.arange(yaw, angle + totaldeg/numofsteps, totaldeg/numofsteps):
+                    self.sweeparr.append(i)
+            self.beginsweep=1
+        else:
+            if self.sweeparr==[]:
+                print("Sweep ended")
+                self.mode="0"
+                return angle
+        
+        desiredyaw=self.sweeparr[0]
+        self.sweeparr.pop(0)
+        return desiredyaw
+
+if __name__ == '__main__':
+    rospy.init_node('Mock_Multi_Agent')
+
+    node = multiplexer()
+
+    rospy.spin()
+
+
+
+    # def formation_planner(self, pattern="line"):
+        
+    #     # Accumulates points, only accumulates in follow me mode
+    #     self.follow_me()
+
+    #     # TODO, double check instance variables in a function
+        
+
+    #     # Automatic method(WIP)
+
+
+
+    #     # Manual Method
+    #     # TODO, change to ordered dictionary, perhaps implementation might be to take a list of drone positions and manually pop each one after it has been assigned allowing it to be recursive
+    #     final_pos=[[],[]] # Array of all the final positions of each drone in formation
+    #     assignment_order=[] # Array of drones which dictate which drone i at the front of the pack
+    #     if pattern=="line" and self.assigned_pos!= num_uav:
+    #         if self.follow_me_arr != []:
+    #             for i in self.follow_me_arr: # This for loop iterates though the previous poses of the human, from the most recent to the most dated and allocates a position whenever permissable, allowing for an arbitrarly large number of drones(if rewritten)
+    #                 # Assign first position
+    #                 # self.eu_dist([i[0],self.human_pos.pose.pose.position.x], [i[1],self.human_pos.pose.pose.position.y]) > human_barrier 
+    #                 if self.assigned_pos==0 and self.check_position(i[0],i[1], -1, False)==True:
+    #                     # Goes through the first waypoint and checks which drone is closer
+    #                     min_dist_arr = self.drone_dist(i[0],i[1])
+    #                     array_pos = min_dist_arr.index(min(min_dist_arr))
+    #                     final_pos[array_pos] = [i[0],i[1]] # Assign first position
+    #                     assignment_order.append(array_pos) # temp
+    #                     self.assigned_pos=1
+    #                 elif self.assigned_pos==1 and self.check_position(i[0],i[1], -1, False)==True:
+    #                     # print("checking second point")
+    #                     # Check which drone is assigned and assigned the other drone
+    #                     for j in final_pos:
+    #                         if j == []: # TODO, check which drone is closer and assign that drone; currently just assign first for testing
+    #                             second_pos = final_pos.index(j)
+    #                             assignment_order.append(second_pos)
+    #                             final_pos[second_pos]=[i[0],i[1]]
+    #                             self.assigned_pos=2
+
+    #             if self.assigned_pos != num_uav:
+    #                 rospy.loginfo("Only %s drones have been assigned locations, human needs to walk further", self.assigned_pos)
+    #             else:
+    #                 rospy.loginfo("Finished assigning all drones to each position")
+                        
+    #         else:
+    #             rospy.loginfo("Tried to go into line formation but human has not walked enough yet")
