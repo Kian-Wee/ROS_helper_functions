@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+# (DEVELOPMENT SHELVED, DISCONTINUED FOR MODE MANAGER)
 # Evolution of the mock multiplexer code to support a variable amount of drones(WIP)
 # Implements proper tracking of human breadcrumbs and staggers the waypoints for more reliable behaviour
 # Checks validity of setpoints by seeing if its within the safety boundary of a human
@@ -195,7 +196,7 @@ class multiplexer():
 
 
         # Manual Method
-        # TODO, change to ordered dictionary, perhaps implementation might be to take a list of drone positions and manually pop each one after it has been assigned allowing it to be recursive
+        # TODO, change to ordered dictionary(OR JUST A LIST STORING CLASSES), perhaps implementation might be to take a list of drone positions and manually pop each one after it has been assigned allowing it to be recursive
         final_pos=[[],[]] # Array of all the final positions of each drone in formation
         assignment_order=[] # Array of drones which dictate which drone i at the front of the pack
         if pattern=="line" and self.assigned_pos!= num_uav:

@@ -26,7 +26,7 @@ class transform():
         self.drone_pos_uwb=PoseWithCovarianceStamped()
         rospy.Subscriber('/UAV' + drone_number + 'PoseUWB', PoseWithCovarianceStamped, self.drone_uwb_callback)
         self.drone_pos_mavros=PoseStamped()
-        rospy.Subscriber(drone_name + 'mavros/local_position/pose', PoseStamped, self.drone_mavros_callback)
+        rospy.Subscriber(drone_name + '/mavros/local_position/pose', PoseStamped, self.drone_mavros_callback)
 
         local_pos = rospy.Publisher(publish_topic, PoseWithCovarianceStamped,queue_size=1)
 
