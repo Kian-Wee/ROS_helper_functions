@@ -11,7 +11,7 @@ from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
 from std_msgs.msg import Int32, Float64, String, Bool, Float32
 import numpy as np
-from borealis_msgs.msg import Borealis_HRI_Output
+from borealis_hri_msgs.msg import Borealis_HRI_Output
 import time
 
 drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
