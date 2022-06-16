@@ -68,7 +68,7 @@ class multiplexer():
         self.teaming_enable = False
 
         # Output for Sense&Avoid
-        drone_setpoint_publisher = rospy.Publisher(drone_name + "/command/pose", PoseStamped,queue_size=1)
+        drone_setpoint_publisher = rospy.Publisher(drone_name + "/setpoint", PoseStamped,queue_size=1)
         # drone_yaw_publisher = rospy.Publisher(drone_name + "/command/yaw", Float64,queue_size=1)
         drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
