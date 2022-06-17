@@ -123,7 +123,7 @@ class multiplexer():
 
                 drone_formation_publisher.publish(self.human_command_posestamped)
 
-                if self.teaming_setpoint.pose.position.x != 0:
+                if self.teaming_setpoint.pose.position.z != 0:
                     cmd.pose.position.x=self.teaming_setpoint.pose.position.x
                     cmd.pose.position.y=self.teaming_setpoint.pose.position.y
                     cmd.pose.position.z=self.teaming_setpoint.pose.position.z
@@ -154,7 +154,7 @@ class multiplexer():
 
                 drone_formation_publisher.publish(self.human_command_posestamped)
 
-                if self.teaming_setpoint.pose.position.x != 0:
+                if self.teaming_setpoint.pose.position.z != 0:
                     cmd.pose.position.x=self.teaming_setpoint.pose.position.x
                     cmd.pose.position.y=self.teaming_setpoint.pose.position.y
                     cmd.pose.position.z=self.teaming_setpoint.pose.position.z
@@ -231,7 +231,7 @@ class multiplexer():
                 cmd.pose.orientation.w=self.uav_pos.rw
                 
             # Always publish the pose, but only print if the pose differs
-            if self.prevcmd != cmd and self.prevmode != "Idle":
+            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.prevmode != "Idle":
                 print(self.mode,[cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z])
 
             self.prevcmd = cmd
@@ -371,7 +371,7 @@ class multiplexer():
 
         # Initalise one time commands
         if self.mode != self.prevmode:
-            if self.mode=="Follow_Me" or self.mode=="Go There":
+            if self.mode=="Follow_Me" or self.mode=="Go_There":
                 self.teaming_pub.publish(True)
             # Start Sweep
             elif self.mode=="Sweep":
@@ -415,6 +415,7 @@ class multiplexer():
             print("Drone has reached setpoint, awaiting new human command")
             self.prevplanner_state = "Idle"
             self.planner_status_publisher.publish("Idle")
+            
 
     def mock_positions(self):
         if self.mode == "Follow_Me" or self.mode == 'Go_There':
