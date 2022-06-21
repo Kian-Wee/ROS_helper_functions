@@ -14,6 +14,7 @@ Sweep - Stay at current position and yaw to present angles given by this node di
 Distract - Send target pos and yaw given by human directly to S&A
 Nil - use last/previous command
 
+TODO - Maybe add in slowyaw implementation for go_there and before distract 
 """
 
 import rospy
@@ -68,7 +69,7 @@ class multiplexer():
         self.teaming_enable = False
 
         # Output for Sense&Avoid
-        drone_setpoint_publisher = rospy.Publisher(drone_name + "/setpoint", PoseStamped,queue_size=1)
+        drone_setpoint_publisher = rospy.Publisher(drone_name + "/setpoint", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub
         # drone_yaw_publisher = rospy.Publisher(drone_name + "/command/yaw", Float64,queue_size=1)
         drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
@@ -93,7 +94,7 @@ class multiplexer():
         self.yaw_command = Float32()
         self.human_command_posestamped = PoseStamped() # Convert into posestamped
 
-         # The problematic thing about this array type is that if there is no command being sent yet, the list index is out of range. Hence, initalise the current position of the uav first to prevent code from crashing
+        # The problematic thing about this array type is that if there is no command being sent yet, the list index is out of range. Hence, initalise the current position of the uav first to prevent code from crashing
         if self.human_command.uav_state_list == [] or self.human_command.uav_pose_array.poses == []:
             self.mode = "Idle"
             self.pos_command.x = self.uav_pos.x
@@ -123,6 +124,10 @@ class multiplexer():
 
                 drone_formation_publisher.publish(self.human_command_posestamped)
 
+                # Print out debug messages for each stage of planning
+                if planner_status == True and self.teaming_enable==True:
+                    self.planner_debug()
+
                 if self.teaming_setpoint.pose.position.z != 0:
                     cmd.pose.position.x=self.teaming_setpoint.pose.position.x
                     cmd.pose.position.y=self.teaming_setpoint.pose.position.y
@@ -133,11 +138,8 @@ class multiplexer():
                     cmd.pose.orientation.z=self.teaming_setpoint.pose.orientation.z
                     cmd.pose.orientation.w=self.teaming_setpoint.pose.orientation.w
 
-                    # Print out debug messages for each stage of planning
-                    if planner_status == True and self.mode != self.prevmode:
-                        self.planner_debug()
                 else:
-                    rospy.loginfo("No new follow me setpoint sent, hovering")
+                    # rospy.loginfo("No new follow me setpoint sent, hovering")
                     cmd.pose.position.x=self.uav_pos.x
                     cmd.pose.position.y=self.uav_pos.y
                     cmd.pose.position.z=self.uav_pos.z
@@ -154,6 +156,10 @@ class multiplexer():
 
                 drone_formation_publisher.publish(self.human_command_posestamped)
 
+                # Print out debug messages for each stage of planning
+                if planner_status == True and self.teaming_enable==True:
+                    self.planner_debug()
+
                 if self.teaming_setpoint.pose.position.z != 0:
                     cmd.pose.position.x=self.teaming_setpoint.pose.position.x
                     cmd.pose.position.y=self.teaming_setpoint.pose.position.y
@@ -164,11 +170,9 @@ class multiplexer():
                     cmd.pose.orientation.z=self.teaming_setpoint.pose.orientation.z
                     cmd.pose.orientation.w=self.teaming_setpoint.pose.orientation.w
 
-                    # Print out debug messages for each stage of planning
-                    if planner_status == True and self.mode != self.prevmode:
-                        self.planner_debug()
+
                 else:
-                    rospy.loginfo("No new go there setpoint sent, hovering")
+                    # rospy.loginfo("No new go there setpoint sent, hovering")
                     cmd.pose.position.x=self.uav_pos.x
                     cmd.pose.position.y=self.uav_pos.y
                     cmd.pose.position.z=self.uav_pos.z
@@ -186,7 +190,7 @@ class multiplexer():
                 cmd.pose.position.y=self.uav_pos.y
                 cmd.pose.position.z=self.uav_pos.z
 
-                q = quaternion_from_euler(0, 0, math.radians(self.slowsweep()))
+                q = quaternion_from_euler(0, 0, math.radians(self.slowyaw()))
                 cmd.pose.orientation.x=q[0]
                 cmd.pose.orientation.y=q[1]
                 cmd.pose.orientation.z=q[2]
@@ -231,8 +235,8 @@ class multiplexer():
                 cmd.pose.orientation.w=self.uav_pos.rw
                 
             # Always publish the pose, but only print if the pose differs
-            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.prevmode != "Idle":
-                print(self.mode,[cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z])
+            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.mode != "Idle":
+                print(self.mode,"[%.3f, %.3f, %.3f]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z))
 
             self.prevcmd = cmd
             self.prevmode=self.mode
@@ -246,7 +250,7 @@ class multiplexer():
     # Slows down sweep to a slower predefined speed, function is made to be non-blocking
     # w is angular velocity in degrees per second
     # Not inputting an angle(or putting in 720 degrees) defaults it to a auto sweep mode
-    def slowsweep(self, angle=720, w=10):
+    def slowyaw(self, angle=720, w=10):
         global rate
 
         (roll, pitch, yaw) = euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])
@@ -395,28 +399,34 @@ class multiplexer():
                     counter+=1
             self.num_go_there_pub.publish(counter)
 
+    # This function enables print statement and a topic to check what stage of planning the drone is at
     def planner_debug(self):
-        if self.pos_command != self.prevpos_command and self.prevplanner_state != "Formation":
+
+        # Everytime a new human command is sent, the updated positions get sent to Formation Planner
+        # The state is then changed to Formation
+        if self.pos_command != self.prevpos_command or self.mode != self.prevmode:
             print("New human command sent to Formation Planner")
             self.prevpos_command = self.pos_command
             self.prevplanner_state = "Formation"
             self.planner_status_publisher.publish("Formation")
+        # If the formation planner updates its setpoint, the state is updated to Sense and Avoid
         elif self.teaming_setpoint != self.prevteaming_setpoint and self.prevplanner_state != "S&A":
             print("Teaming Planner has sent new setpoint to S&A")
             self.prevteaming_setpoint = self.teaming_setpoint
             self.prevplanner_state = "S&A"
             self.planner_status_publisher.publish("S&A")
+        # If S&A publishes a new setpoint to the drone
         elif self.setpoint != self.prevsetpoint and self.prevplanner_state != "Moving":
             print("Sense&Avoid has sent new setpoint to mavros")
-            self.setpoint = self.prevsetpoint
+            self.prevsetpoint = self.setpoint
             self.prevplanner_state = "Moving"
             self.planner_status_publisher.publish("Moving")
-        elif math.sqrt((self.setpoint.pose.position.x - self.uav_pos.x)**2 + (self.setpoint.pose.position.y - self.uav_pos.y)**2 + (self.setpoint.pose.position.z - self.uav_pos.z)**2) < 0.2 and self.prevplanner_state != "Idle":
+        elif math.sqrt((self.setpoint.pose.position.x - self.uav_pos.x)**2 + (self.setpoint.pose.position.y - self.uav_pos.y)**2 + (self.setpoint.pose.position.z - self.uav_pos.z)**2) < 0.2 and self.prevplanner_state == "Moving":
             print("Drone has reached setpoint, awaiting new human command")
             self.prevplanner_state = "Idle"
             self.planner_status_publisher.publish("Idle")
             
-
+    # Grab values from the /borealis_hri_output_topic instead of teaming planner for debugging
     def mock_positions(self):
         if self.mode == "Follow_Me" or self.mode == 'Go_There':
             self.teaming_setpoint.pose.position.x = self.pos_command.x
