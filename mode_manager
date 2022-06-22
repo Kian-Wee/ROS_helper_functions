@@ -22,14 +22,14 @@ import math
 import os
 from geometry_msgs.msg import PoseStamped, Point
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from std_msgs.msg import Int32, String, Bool, Float32
+from std_msgs.msg import Int8, String, Bool, Float32
 import numpy as np
 from borealis_hri_msgs.msg import Borealis_HRI_Output
 import time
 
 drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
 drone_number = int(os.getenv('DRONE_NUMBER')) #environment variable set in bashrc(or exported in terminal)
-rate = 20 # Hz
+rate = 5 # Hz, initally 20
 
 
 
@@ -62,8 +62,8 @@ class multiplexer():
         rospy.Subscriber(drone_name + "/teaming_planner/mavros_assigned_virtual_position",  PoseStamped, self.teaming_planner_callback)
         # teaming_sub.unregister()
         # teaming_pub.unregister()
-        self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int32,queue_size=1) # Total number of drones in go there
-        drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
+        self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8,queue_size=1) # Total number of drones in go there
+        self.drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
         self.teaming_enable = True
 
         # Output for Sense&Avoid
@@ -90,6 +90,7 @@ class multiplexer():
         self.pos_command = Point()
         self.prevpos_command = Point()
         self.yaw_command = Float32()
+        self.prevyaw_command = Float32()
         self.human_command_posestamped = PoseStamped() # Convert into posestamped
 
         # The problematic thing about this array type is that if there is no command being sent yet, the list index is out of range. Hence, initalise the current position of the uav first to prevent code from crashing
@@ -120,8 +121,6 @@ class multiplexer():
             if self.mode=="Follow_Me":
                 # print("FM")
 
-                drone_formation_publisher.publish(self.human_command_posestamped)
-
                 # Print out debug messages for each stage of planning
                 if planner_status == True and self.teaming_enable==True:
                     self.planner_debug()
@@ -151,8 +150,6 @@ class multiplexer():
             # MIGHT NEED TO STAGGER YAW ALSO
             elif self.mode=="Go_There":
                 # print("GT")
-
-                drone_formation_publisher.publish(self.human_command_posestamped)
 
                 # Print out debug messages for each stage of planning
                 if planner_status == True and self.teaming_enable==True:
@@ -372,8 +369,9 @@ class multiplexer():
             self.human_command_posestamped.pose.orientation.w=q[3]
 
         # Initalise one time commands
-        if self.mode != self.prevmode:
-            if self.mode=="Follow_Me" or self.mode=="Go_There":
+        if self.mode != self.prevmode or self.prevpos_command != self.pos_command or self.prevyaw_command != self.yaw_command:
+            if (self.mode=="Follow_Me" or self.mode=="Go_There") and self.teaming_enable == True:
+                self.drone_formation_publisher.publish(self.human_command_posestamped) # Publish command once to formation planner in follow_me or go_there
                 self.teaming_pub.publish(True)
             # Start Sweep
             elif self.mode=="Sweep":
@@ -383,19 +381,23 @@ class multiplexer():
             else:
                 print("No Mode or Invalid Mode")
 
-        # Check how many drones are in the same mode
-        if self.mode == "Follow_Me":
-            counter=0
-            for i in msg.uav_state_list:
-                if i == "Follow_Me":
-                    counter+=1
-            self.num_agents_pub.publish(counter)
-        if self.mode == "Go_There":
-            counter=0
-            for i in msg.uav_state_list:
-                if i == "Go_There":
-                    counter+=1
-            self.num_agents_pub.publish(counter)
+            # Check how many drones are in the same mode
+            if self.mode == "Follow_Me":
+                counter=0
+                for i in msg.uav_state_list:
+                    if i == "Follow_Me":
+                        counter+=1
+                self.num_agents_pub.publish(counter)
+            if self.mode == "Go_There":
+                counter=0
+                for i in msg.uav_state_list:
+                    if i == "Go_There":
+                        counter+=1
+                self.num_agents_pub.publish(counter)
+        
+        # Update previous commands
+        self.prevpos_command=self.pos_command
+        self.prevyaw_command=self.yaw_command
 
     # This function enables print statement and a topic to check what stage of planning the drone is at
     def planner_debug(self):
