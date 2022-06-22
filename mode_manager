@@ -56,16 +56,14 @@ class multiplexer():
         self.sweeparr=[]
 
         # Teaming Planner topics
-        self.teaming_pub = rospy.Publisher(drone_name + "/activate_teaming_planner" , Bool,queue_size=1) # pub once
+        self.teaming_pub = rospy.Publisher(drone_name + "/teaming_planner/activate_planner" , Bool,queue_size=1) # pub once
         self.teaming_setpoint = PoseStamped()
         self.prevteaming_setpoint = PoseStamped()
         rospy.Subscriber(drone_name + "/teaming_planner/mavros_assigned_virtual_position",  PoseStamped, self.teaming_planner_callback)
-        self.follow_me_total_pub = rospy.Publisher("/activate_teaming_planner" , Bool,queue_size=1)
         # teaming_sub.unregister()
         # teaming_pub.unregister()
-        self.num_follow_me_pub = rospy.Publisher("/num_follow_me" , Int32,queue_size=1) # Total number of drones in follow me
-        self.num_go_there_pub = rospy.Publisher("/num_go_there" , Int32,queue_size=1) # Total number of drones in go there
-        drone_formation_publisher = rospy.Publisher(drone_name + "/command/pose", PoseStamped,queue_size=1)
+        self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int32,queue_size=1) # Total number of drones in go there
+        drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
         self.teaming_enable = False
 
         # Output for Sense&Avoid
@@ -391,13 +389,13 @@ class multiplexer():
             for i in msg.uav_state_list:
                 if i == "Follow_Me":
                     counter+=1
-            self.num_follow_me_pub.publish(counter)
+            self.num_agents_pub.publish(counter)
         if self.mode == "Go_There":
             counter=0
             for i in msg.uav_state_list:
                 if i == "Go_There":
                     counter+=1
-            self.num_go_there_pub.publish(counter)
+            self.num_agents_pub.publish(counter)
 
     # This function enables print statement and a topic to check what stage of planning the drone is at
     def planner_debug(self):
