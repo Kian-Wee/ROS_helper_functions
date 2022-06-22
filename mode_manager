@@ -230,7 +230,7 @@ class multiplexer():
                 cmd.pose.orientation.w=self.uav_pos.rw
                 
             # Always publish the pose, but only print if the pose differs
-            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.mode != "Idle" and cmd.pose.position.x!=self.uav_pos.x:
+            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.mode != "Idle":
                 print(self.mode,"[%.3f, %.3f, %.3f]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z))
 
             self.prevcmd = cmd
