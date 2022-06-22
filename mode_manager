@@ -195,7 +195,7 @@ class multiplexer():
                 # print("Distract")
                 cmd.pose.position.x=self.pos_command.x
                 cmd.pose.position.y=self.pos_command.y
-                cmd.pose.position.z=self.pos_command.z
+                cmd.pose.position.z=1.3
 
                 # Grab yaw from command
                 q = quaternion_from_euler(0, 0, math.radians(self.yaw_command))
@@ -230,7 +230,7 @@ class multiplexer():
                 cmd.pose.orientation.w=self.uav_pos.rw
                 
             # Always publish the pose, but only print if the pose differs
-            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.mode != "Idle":
+            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.mode != "Idle": # TODO
                 print(self.mode,"[%.3f, %.3f, %.3f]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z))
 
             self.prevcmd = cmd
