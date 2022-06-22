@@ -64,7 +64,7 @@ class multiplexer():
         # teaming_pub.unregister()
         self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int32,queue_size=1) # Total number of drones in go there
         drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
-        self.teaming_enable = False
+        self.teaming_enable = True
 
         # Output for Sense&Avoid
         drone_setpoint_publisher = rospy.Publisher(drone_name + "/setpoint", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub
