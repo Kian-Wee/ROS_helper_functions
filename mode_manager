@@ -64,10 +64,10 @@ class multiplexer():
         # teaming_pub.unregister()
         self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8,queue_size=1) # Total number of drones in go there
         self.drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
-        self.teaming_enable = True
+        self.teaming_enable = False
 
         # Output for Sense&Avoid
-        drone_setpoint_publisher = rospy.Publisher(drone_name + "/setpoint", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub
+        drone_setpoint_publisher = rospy.Publisher(drone_name + "/teaming_planner/uwb_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
         # drone_yaw_publisher = rospy.Publisher(drone_name + "/command/yaw", Float64,queue_size=1)
         drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
@@ -195,7 +195,7 @@ class multiplexer():
                 # print("Distract")
                 cmd.pose.position.x=self.pos_command.x
                 cmd.pose.position.y=self.pos_command.y
-                cmd.pose.position.z=1.3
+                cmd.pose.position.z=1.6
 
                 # Grab yaw from command
                 q = quaternion_from_euler(0, 0, math.radians(self.yaw_command))
@@ -229,8 +229,8 @@ class multiplexer():
                 cmd.pose.orientation.z=self.uav_pos.rz
                 cmd.pose.orientation.w=self.uav_pos.rw
                 
-            # Always publish the pose, but only print if the pose differs
-            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.mode != "Idle": # TODO
+            # Always publish the pose, but only print if the pose differs and if drone is not hovering on the spot
+            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.mode != "Idle" and (cmd.pose.position.x!=self.uav_pos.x and  cmd.pose.position.y!=self.uav_pos.y and cmd.pose.position.z!=self.uav_pos.z):  # TODO
                 print(self.mode,"[%.3f, %.3f, %.3f]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z))
 
             self.prevcmd = cmd
@@ -370,7 +370,7 @@ class multiplexer():
 
         # Initalise one time commands
         if self.mode != self.prevmode or self.prevpos_command != self.pos_command or self.prevyaw_command != self.yaw_command:
-            if (self.mode=="Follow_Me" or self.mode=="Go_There") and self.teaming_enable == True:
+            if (self.mode=="Follow_Me" or self.mode=="Go_There"):
                 self.drone_formation_publisher.publish(self.human_command_posestamped) # Publish command once to formation planner in follow_me or go_there
                 self.teaming_pub.publish(True)
             # Start Sweep
@@ -387,13 +387,13 @@ class multiplexer():
                 for i in msg.uav_state_list:
                     if i == "Follow_Me":
                         counter+=1
-                self.num_agents_pub.publish(counter)
+                self.num_agents_pub.publish(Int8(counter))
             if self.mode == "Go_There":
                 counter=0
                 for i in msg.uav_state_list:
                     if i == "Go_There":
                         counter+=1
-                self.num_agents_pub.publish(counter)
+                self.num_agents_pub.publish(Int8(counter))
         
         # Update previous commands
         self.prevpos_command=self.pos_command
