@@ -351,7 +351,7 @@ class multiplexer():
             self.pos_command.x = self.uav_pos.x
             self.pos_command.y = self.uav_pos.y
             self.pos_command.z = self.uav_pos.z
-            self.yaw_command = euler_from_quaternion([self.uav_pos.rx,self.uav_pos.ry,self.uav_pos.rz,self.uav_pos.rw])[2]
+            self.yaw_command = euler_from_quaternion([self.uav_pos.rx,self.uav_pos.ry,self.uav_pos.rz,self.uav_pos.rw])[int(drone_number)-1]
             print("Human Message not publishing")
         else:
             self.mode =msg.uav_state_list[drone_number-1]
