@@ -65,6 +65,7 @@ class multiplexer():
         self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8MultiArray,queue_size=1) # Total number of drones in go there
         self.drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
         self.teaming_enable = False
+        rospy.Subscriber("/disable_teaming_planner", Bool, self.teaming_override_callback) # used to override disable the formation planner on the fly
 
         # Output for Sense&Avoid
         drone_setpoint_publisher = rospy.Publisher(drone_name + "/teaming_planner/uwb_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
@@ -240,10 +241,6 @@ class multiplexer():
             # drone_yaw_publisher.publish(self.yaw_command)
             drone_mode_publisher.publish(self.mode)
 
-            # temp=Int8MultiArray()
-            # temp.data.append(1)
-            # self.num_agents_pub.publish(temp)
-
             self.rosrate.sleep()
 
     # Slows down sweep to a slower predefined speed, function is made to be non-blocking
@@ -407,6 +404,7 @@ class multiplexer():
             if self.mode == "Go_There":
                 for i in np.arange(0, len(msg.uav_state_list), 1):
                     if msg.uav_state_list[i] == "Go_There": int8array.data.append(Int8(i+1))
+            print(int8array)
             self.num_agents_pub.publish(int8array)
         
         # Update previous commands
@@ -466,6 +464,10 @@ class multiplexer():
 
     def teaming_planner_callback(self,data):
         self.teaming_setpoint = data
+
+    def teaming_override_callback(self,data):
+        if data==1: self.teaming_enable=1
+        # if data==0: self.teaming_enable=0
 
 
 
