@@ -22,7 +22,7 @@ import math
 import os
 from geometry_msgs.msg import PoseStamped, Point
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from std_msgs.msg import Int8, String, Bool, Float32
+from std_msgs.msg import Int8, String, Bool, Float32, Int8MultiArray
 import numpy as np
 from borealis_hri_msgs.msg import Borealis_HRI_Output
 import time
@@ -62,7 +62,7 @@ class multiplexer():
         rospy.Subscriber(drone_name + "/teaming_planner/mavros_assigned_virtual_position",  PoseStamped, self.teaming_planner_callback)
         # teaming_sub.unregister()
         # teaming_pub.unregister()
-        self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8,queue_size=1) # Total number of drones in go there
+        self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8MultiArray,queue_size=1) # Total number of drones in go there
         self.drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
         self.teaming_enable = False
 
@@ -240,6 +240,10 @@ class multiplexer():
             # drone_yaw_publisher.publish(self.yaw_command)
             drone_mode_publisher.publish(self.mode)
 
+            # temp=Int8MultiArray()
+            # temp.data.append(1)
+            # self.num_agents_pub.publish(temp)
+
             self.rosrate.sleep()
 
     # Slows down sweep to a slower predefined speed, function is made to be non-blocking
@@ -381,19 +385,29 @@ class multiplexer():
             else:
                 print("No Mode or Invalid Mode")
 
+            # # Check how many drones are in the same mode
+            # if self.mode == "Follow_Me":
+            #     counter=0
+            #     for i in msg.uav_state_list:
+            #         if i == "Follow_Me":
+            #             counter+=1
+            #     self.num_agents_pub.publish(Int8(counter))
+            # if self.mode == "Go_There":
+            #     counter=0
+            #     for i in msg.uav_state_list:
+            #         if i == "Go_There":
+            #             counter+=1
+            #     self.num_agents_pub.publish(Int8(counter))
+
+            int8array=Int8MultiArray()
             # Check how many drones are in the same mode
             if self.mode == "Follow_Me":
-                counter=0
-                for i in msg.uav_state_list:
-                    if i == "Follow_Me":
-                        counter+=1
-                self.num_agents_pub.publish(Int8(counter))
+                for i in np.arange(0, len(msg.uav_state_list), 1):
+                    if msg.uav_state_list[i] == "Follow_Me": int8array.data.append(Int8(i+1)) # Python array starts from 0
             if self.mode == "Go_There":
-                counter=0
-                for i in msg.uav_state_list:
-                    if i == "Go_There":
-                        counter+=1
-                self.num_agents_pub.publish(Int8(counter))
+                for i in np.arange(0, len(msg.uav_state_list), 1):
+                    if msg.uav_state_list[i] == "Go_There": int8array.data.append(Int8(i+1))
+            self.num_agents_pub.publish(int8array)
         
         # Update previous commands
         self.prevpos_command=self.pos_command
