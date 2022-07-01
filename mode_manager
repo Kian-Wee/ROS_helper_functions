@@ -39,16 +39,6 @@ class multiplexer():
 
         global rate
         
-        # # Follow Me
-        # self.follow_me_pos = PoseWithCovarianceStamped() ########################
-        # rospy.Subscriber(drone_name + '/uav_all/follow_me_target_pose',  PoseWithCovarianceStamped, self.follow_me_callback)
-
-        # # Go There
-        # self.uav_go_there_pos = PoseWithCovarianceStamped()
-        # rospy.Subscriber(drone_name + '/command/pose',  PoseWithCovarianceStamped, self.uav_go_there_callback)
-        # self.uav_go_there_yaw = Float64()
-        # rospy.Subscriber(drone_name + '/command/yaw',  Float64, self.uav_go_there_yaw_callback)
-
         # Distract duration
         self.distract_duration = 5 #s
         self.distract_timer = 0 #dont touch
@@ -382,29 +372,14 @@ class multiplexer():
             else:
                 print("No Mode or Invalid Mode")
 
-            # # Check how many drones are in the same mode
-            # if self.mode == "Follow_Me":
-            #     counter=0
-            #     for i in msg.uav_state_list:
-            #         if i == "Follow_Me":
-            #             counter+=1
-            #     self.num_agents_pub.publish(Int8(counter))
-            # if self.mode == "Go_There":
-            #     counter=0
-            #     for i in msg.uav_state_list:
-            #         if i == "Go_There":
-            #             counter+=1
-            #     self.num_agents_pub.publish(Int8(counter))
-
             int8array=Int8MultiArray()
             # Check how many drones are in the same mode
             if self.mode == "Follow_Me":
                 for i in np.arange(0, len(msg.uav_state_list), 1):
-                    if msg.uav_state_list[i] == "Follow_Me": int8array.data.append(Int8(i+1)) # Python array starts from 0
+                    if msg.uav_state_list[i] == "Follow_Me": int8array.data.append(int(i)+int(1)) # Python array starts from 0
             if self.mode == "Go_There":
                 for i in np.arange(0, len(msg.uav_state_list), 1):
-                    if msg.uav_state_list[i] == "Go_There": int8array.data.append(Int8(i+1))
-            print(int8array)
+                    if msg.uav_state_list[i] == "Go_There": int8array.data.append(int(i)+int(1))
             self.num_agents_pub.publish(int8array)
         
         # Update previous commands
