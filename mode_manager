@@ -58,9 +58,9 @@ class multiplexer():
         rospy.Subscriber("/disable_teaming_planner", Bool, self.teaming_override_callback) # used to override disable the formation planner on the fly
 
         # Output for Sense&Avoid
-        drone_setpoint_publisher = rospy.Publisher(drone_name + "/teaming_planner/uwb_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
+        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/teaming_planner/uwb_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
         # drone_yaw_publisher = rospy.Publisher(drone_name + "/command/yaw", Float64,queue_size=1)
-        drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
+        self.drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
         self.prevsetpoint = PoseStamped()
         rospy.Subscriber(drone_name + "/mavros/setpoint_position/local", PoseStamped, self.setpoint_callback) # To check if the S&A planner has finished planning
@@ -227,9 +227,9 @@ class multiplexer():
             self.prevcmd = cmd
             self.prevmode=self.mode
 
-            drone_setpoint_publisher.publish(cmd)
+            self.drone_setpoint_publisher.publish(cmd)
             # drone_yaw_publisher.publish(self.yaw_command)
-            drone_mode_publisher.publish(self.mode)
+            self.drone_mode_publisher.publish(self.mode)
 
             self.rosrate.sleep()
 
@@ -362,8 +362,10 @@ class multiplexer():
         # Initalise one time commands
         if self.mode != self.prevmode or self.prevpos_command != self.pos_command or self.prevyaw_command != self.yaw_command:
             if (self.mode=="Follow_Me" or self.mode=="Go_There"):
-                self.drone_formation_publisher.publish(self.human_command_posestamped) # Publish command once to formation planner in follow_me or go_there
                 self.teaming_pub.publish(True)
+                self.drone_mode_publisher.publish(self.mode)
+                time.sleep(0.2)
+                self.drone_formation_publisher.publish(self.human_command_posestamped) # Publish command once to formation planner in follow_me or go_there
             # Start Sweep
             elif self.mode=="Sweep":
                 self.beginsweep=0
