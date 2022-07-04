@@ -58,7 +58,8 @@ class multiplexer():
         rospy.Subscriber("/disable_teaming_planner", Bool, self.teaming_override_callback) # used to override disable the formation planner on the fly
 
         # Output for Sense&Avoid
-        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/teaming_planner/uwb_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
+        # self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/borealis_teaming_planner/uwb_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
+        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/mavros_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
         # drone_yaw_publisher = rospy.Publisher(drone_name + "/command/yaw", Float64,queue_size=1)
         self.drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
@@ -443,8 +444,12 @@ class multiplexer():
         self.teaming_setpoint = data
 
     def teaming_override_callback(self,data):
-        if data==1: self.teaming_enable=1
-        # if data==0: self.teaming_enable=0
+        if data==1:
+            self.teaming_enable=False
+            rospy.loginfo_once("Teaming planner disabled")
+        if data==0:
+            self.teaming_enable=True
+            rospy.loginfo_once("Teaming planner Enabled")
 
 
 
