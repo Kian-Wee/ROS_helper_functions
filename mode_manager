@@ -49,7 +49,7 @@ class multiplexer():
         self.teaming_pub = rospy.Publisher(drone_name + "/teaming_planner/activate_planner" , Bool,queue_size=1) # pub once
         self.teaming_setpoint = PoseStamped()
         self.prevteaming_setpoint = PoseStamped()
-        rospy.Subscriber(drone_name + "/teaming_planner/mavros_assigned_virtual_position",  PoseStamped, self.teaming_planner_callback)
+        rospy.Subscriber(drone_name + "/control_manager/mavros_assigned_virtual_position",  PoseStamped, self.teaming_planner_callback)
         # teaming_sub.unregister()
         # teaming_pub.unregister()
         self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8MultiArray,queue_size=1) # Total number of drones in go there
