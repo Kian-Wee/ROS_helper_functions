@@ -56,6 +56,7 @@ class multiplexer():
         self.drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
         self.teaming_enable = True
         rospy.Subscriber("/disable_teaming_planner", Bool, self.teaming_override_callback) # used to override disable the formation planner on the fly
+        self.int8array=Int8MultiArray()
 
         # Output for Sense&Avoid
         self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/input", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
@@ -231,6 +232,7 @@ class multiplexer():
             # drone_yaw_publisher.publish(self.yaw_command)
             self.drone_mode_publisher.publish(self.mode)
             self.drone_formation_publisher.publish(self.human_command_posestamped)
+            self.num_agents_pub.publish(self.int8array)
 
             self.rosrate.sleep()
 
@@ -375,15 +377,15 @@ class multiplexer():
             else:
                 print("No Mode or Invalid Mode")
 
-            int8array=Int8MultiArray()
+            
             # Check how many drones are in the same mode
             if self.mode == "Follow_Me":
                 for i in np.arange(0, len(msg.uav_state_list), 1):
-                    if msg.uav_state_list[i] == "Follow_Me": int8array.data.append(int(i)+int(1)) # Python array starts from 0
+                    if msg.uav_state_list[i] == "Follow_Me": self.int8array.data.append(int(i)+int(1)) # Python array starts from 0
             if self.mode == "Go_There":
                 for i in np.arange(0, len(msg.uav_state_list), 1):
-                    if msg.uav_state_list[i] == "Go_There": int8array.data.append(int(i)+int(1))
-            self.num_agents_pub.publish(int8array)
+                    if msg.uav_state_list[i] == "Go_There": self.int8array.data.append(int(i)+int(1))
+            self.num_agents_pub.publish(self.int8array)
         
         # Update previous commands
         self.prevpos_command=self.pos_command
