@@ -60,7 +60,6 @@ class multiplexer():
 
         # Output for Sense&Avoid
         self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/input", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
-        # drone_yaw_publisher = rospy.Publisher(drone_name + "/command/yaw", Float64,queue_size=1)
         self.drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
         self.prevsetpoint = PoseStamped()
@@ -143,6 +142,8 @@ class multiplexer():
             elif self.mode=="Go_There":
                 # print("GT")
 
+                self.mock_positions()
+
                 # Print out debug messages for each stage of planning
                 if planner_status == True and self.teaming_enable==True:
                     self.planner_debug()
@@ -205,31 +206,28 @@ class multiplexer():
                 cmd=self.prevcmd
 
             else:
-                # if self.mode=="Idle":
-                #     # print("In Idle Mode after Sweep")
-                #     pass
-                # else:
-                #     # print("No Mode or Invalid Mode")
-                #     pass
+                # If the mode is set to idle, grab the first set of coordinates the drone is at and contionusly publish it
+                if self.mode=="Idle" and self.prevmode=="Idle":
+                    cmd=self.prevcmd
+            # If there are no other new commands, set to hover at current position
+                else:
+                    cmd.pose.position.x=self.uav_pos.x
+                    cmd.pose.position.y=self.uav_pos.y
+                    cmd.pose.position.z=self.uav_pos.z
 
-                cmd.pose.position.x=self.uav_pos.x
-                cmd.pose.position.y=self.uav_pos.y
-                cmd.pose.position.z=self.uav_pos.z
-
-                cmd.pose.orientation.x=self.uav_pos.rx
-                cmd.pose.orientation.y=self.uav_pos.ry
-                cmd.pose.orientation.z=self.uav_pos.rz
-                cmd.pose.orientation.w=self.uav_pos.rw
+                    cmd.pose.orientation.x=self.uav_pos.rx
+                    cmd.pose.orientation.y=self.uav_pos.ry
+                    cmd.pose.orientation.z=self.uav_pos.rz
+                    cmd.pose.orientation.w=self.uav_pos.rw
                 
             # Always publish the pose, but only print if the pose differs and if drone is not hovering on the spot
-            if (self.prevcmd != cmd or self.mode != self.prevmode) and self.mode != "Idle" and (cmd.pose.position.x!=self.uav_pos.x and  cmd.pose.position.y!=self.uav_pos.y and cmd.pose.position.z!=self.uav_pos.z):  # TODO
+            if self.prevcmd != cmd and self.mode != "Idle" and (cmd.pose.position.x!=self.uav_pos.x and  cmd.pose.position.y!=self.uav_pos.y and cmd.pose.position.z!=self.uav_pos.z):  # TODO
                 print(self.mode,"[%.3f, %.3f, %.3f]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z))
 
             self.prevcmd = cmd
             self.prevmode=self.mode
 
             self.drone_setpoint_publisher.publish(cmd)
-            # drone_yaw_publisher.publish(self.yaw_command)
             self.drone_mode_publisher.publish(self.mode)
             self.drone_formation_publisher.publish(self.human_command_posestamped)
             self.num_agents_pub.publish(self.int8array)
@@ -374,16 +372,20 @@ class multiplexer():
                 self.beginsweep=0
             elif self.mode=="Distract":
                 self.distract_timer = time.time()
+            elif self.mode=="Idle":
+                rospy.loginfo("Idle Mode")
+            elif self.mode=="Nil":
+                rospy.loginfo("Nil Mode")
             else:
                 print("No Mode or Invalid Mode")
 
-            
+            self.int8array=Int8MultiArray()
             # Check how many drones are in the same mode
             if self.mode == "Follow_Me":
-                for i in np.arange(0, len(msg.uav_state_list), 1):
+                for i in np.arange(0, len(msg.uav_state_list) -1, 1):
                     if msg.uav_state_list[i] == "Follow_Me": self.int8array.data.append(int(i)+int(1)) # Python array starts from 0
             if self.mode == "Go_There":
-                for i in np.arange(0, len(msg.uav_state_list), 1):
+                for i in np.arange(0, len(msg.uav_state_list) -1, 1):
                     if msg.uav_state_list[i] == "Go_There": self.int8array.data.append(int(i)+int(1))
             self.num_agents_pub.publish(self.int8array)
         
