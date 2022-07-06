@@ -24,7 +24,7 @@ from geometry_msgs.msg import PoseStamped, Point
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from std_msgs.msg import Int8, String, Bool, Float32, Int8MultiArray
 import numpy as np
-from borealis_hri_msgs.msg import Borealis_HRI_Output
+from borealis_hri_msgs.msg import Borealis_HRI_Output   
 import time
 
 drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
@@ -49,17 +49,16 @@ class multiplexer():
         self.teaming_pub = rospy.Publisher(drone_name + "/teaming_planner/activate_planner" , Bool,queue_size=1) # pub once
         self.teaming_setpoint = PoseStamped()
         self.prevteaming_setpoint = PoseStamped()
-        rospy.Subscriber(drone_name + "/control_manager/mavros_assigned_virtual_position",  PoseStamped, self.teaming_planner_callback)
+        rospy.Subscriber(drone_name + "/borealis_teaming_planner/assigned_position_output",  PoseStamped, self.teaming_planner_callback)
         # teaming_sub.unregister()
         # teaming_pub.unregister()
         self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8MultiArray,queue_size=1) # Total number of drones in go there
         self.drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
-        self.teaming_enable = False
+        self.teaming_enable = True
         rospy.Subscriber("/disable_teaming_planner", Bool, self.teaming_override_callback) # used to override disable the formation planner on the fly
 
         # Output for Sense&Avoid
-        # self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/borealis_teaming_planner/uwb_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
-        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/mavros_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
+        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/input", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /setpoint
         # drone_yaw_publisher = rospy.Publisher(drone_name + "/command/yaw", Float64,queue_size=1)
         self.drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
@@ -231,6 +230,7 @@ class multiplexer():
             self.drone_setpoint_publisher.publish(cmd)
             # drone_yaw_publisher.publish(self.yaw_command)
             self.drone_mode_publisher.publish(self.mode)
+            self.drone_formation_publisher.publish(self.human_command_posestamped)
 
             self.rosrate.sleep()
 
@@ -365,7 +365,7 @@ class multiplexer():
             if (self.mode=="Follow_Me" or self.mode=="Go_There"):
                 self.teaming_pub.publish(True)
                 self.drone_mode_publisher.publish(self.mode)
-                time.sleep(0.2)
+                # time.sleep(0.2)
                 self.drone_formation_publisher.publish(self.human_command_posestamped) # Publish command once to formation planner in follow_me or go_there
             # Start Sweep
             elif self.mode=="Sweep":
