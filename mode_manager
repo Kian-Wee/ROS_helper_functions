@@ -397,24 +397,24 @@ class multiplexer():
         # Everytime a new human command is sent, the updated positions get sent to Formation Planner
         # The state is then changed to Formation
         if self.pos_command != self.prevpos_command or self.mode != self.prevmode:
-            print("New human command sent to Formation Planner")
+            # print("New human command sent to Formation Planner")
             self.prevpos_command = self.pos_command
             self.prevplanner_state = "Formation"
             self.planner_status_publisher.publish("Formation")
         # If the formation planner updates its setpoint, the state is updated to Sense and Avoid
         elif self.teaming_setpoint != self.prevteaming_setpoint and self.prevplanner_state != "S&A":
-            print("Teaming Planner has sent new setpoint to S&A")
+            # print("Teaming Planner has sent new setpoint to S&A")
             self.prevteaming_setpoint = self.teaming_setpoint
             self.prevplanner_state = "S&A"
             self.planner_status_publisher.publish("S&A")
         # If S&A publishes a new setpoint to the drone
         elif self.setpoint != self.prevsetpoint and self.prevplanner_state != "Moving":
-            print("Sense&Avoid has sent new setpoint to mavros")
+            # print("Sense&Avoid has sent new setpoint to mavros")
             self.prevsetpoint = self.setpoint
             self.prevplanner_state = "Moving"
             self.planner_status_publisher.publish("Moving")
         elif math.sqrt((self.setpoint.pose.position.x - self.uav_pos.x)**2 + (self.setpoint.pose.position.y - self.uav_pos.y)**2 + (self.setpoint.pose.position.z - self.uav_pos.z)**2) < 0.2 and self.prevplanner_state == "Moving":
-            print("Drone has reached setpoint, awaiting new human command")
+            # print("Drone has reached setpoint, awaiting new human command")
             self.prevplanner_state = "Idle"
             self.planner_status_publisher.publish("Idle")
             
