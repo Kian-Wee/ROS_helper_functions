@@ -235,14 +235,14 @@ class multiplexer():
     def slowyaw(self, angle=720, w=10):
         global rate
 
-        (roll, pitch, yaw) = euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])
+        yaw = euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])[2]
 
         # Preset sweep pattern (45,-45,90,-90)
         # TODO, code is quite inelegant because it was copied from previous method, cleanup code
         if self.beginsweep==0 and angle==720:
             self.sweeparr=[]
             
-            yaw = math.radians(yaw)
+            yaw = math.degrees(yaw)
             print("Inital yaw:",yaw)
 
             angle = yaw + 45
@@ -305,7 +305,7 @@ class multiplexer():
                 for i in np.arange(yaw, angle - totaldeg/numofsteps, -totaldeg/numofsteps): self.sweeparr.append(i)
             self.beginsweep=1
 
-            print(self.sweeparr)
+            # print(self.sweeparr)
         
         # Should never be invoked, left for debugging
         elif self.beginsweep==0 and (yaw - angle) == 0:
