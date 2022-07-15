@@ -31,6 +31,8 @@ drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or expo
 drone_number = int(os.getenv('DRONE_NUMBER')) #environment variable set in bashrc(or exported in terminal)
 rate = 5 # Hz, initally 20
 
+
+
 class multiplexer():
 
     def __init__(self):
@@ -57,7 +59,7 @@ class multiplexer():
         self.int8array=Int8MultiArray()
 
         # Output for Sense&Avoid
-        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/input", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /control_manager/input
+        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/input", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /control_manager/input , /control_manager/mavros_assigned_virtual_position
         self.drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
         self.prevsetpoint = PoseStamped()
@@ -102,6 +104,7 @@ class multiplexer():
         while not rospy.is_shutdown():
 
             cmd = PoseStamped()
+            cmd.header.frame_id="/odom"
 
             if self.teaming_enable == False:
                 self.mock_positions()
@@ -216,7 +219,8 @@ class multiplexer():
                     cmd.pose.orientation.w=self.uav_pos.rw
                 
             # Always publish the pose, but only print if 1) the pose differs 
-            if self.mode != self.prevmode or self.prevcmd.pose.position.x != cmd.pose.position.x or self.prevcmd.pose.position.y != cmd.pose.position.y or self.prevcmd.pose.position.z != cmd.pose.position.z or self.prevcmd.pose.orientation.w != cmd.pose.orientation.w or self.prevcmd.pose.orientation.x != cmd.pose.orientation.x or self.prevcmd.pose.orientation.y != cmd.pose.orientation.y or self.prevcmd.pose.orientation.z != cmd.pose.orientation.z:
+            # self.mode != self.prevmode or
+            if self.prevcmd.pose.position.x != cmd.pose.position.x or self.prevcmd.pose.position.y != cmd.pose.position.y or self.prevcmd.pose.position.z != cmd.pose.position.z or self.prevcmd.pose.orientation.w != cmd.pose.orientation.w or self.prevcmd.pose.orientation.x != cmd.pose.orientation.x or self.prevcmd.pose.orientation.y != cmd.pose.orientation.y or self.prevcmd.pose.orientation.z != cmd.pose.orientation.z:
                 # and 2) if drone is not hovering on the spot in idle
                 if (self.prevmode != "Idle" and self.mode != "Idle") or (self.prevmode != "Nil" and self.mode == "Nil"):
                     print(self.mode,"[%.3f, %.3f, %.3f, %.3f deg]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z, math.degrees(euler_from_quaternion([cmd.pose.orientation.x,cmd.pose.orientation.y,cmd.pose.orientation.z,cmd.pose.orientation.w])[2])))
@@ -236,7 +240,7 @@ class multiplexer():
     # w is angular velocity in degrees per second
     # Not inputting an angle(or putting in 720 degrees) defaults it to a auto sweep mode
     # Take note that both the inputs and the outputs are in DEGREES, not radians
-    def slowyaw(self, angle=720, w=10):
+    def slowyaw(self, angle=720, w=20):
         global rate
 
         yaw = euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])[2]
