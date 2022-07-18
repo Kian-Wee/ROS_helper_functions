@@ -12,4 +12,4 @@ position_benchmark - benchmark 2 positional sources to check accuracy (ie measur
 
 mock_multiplexer(depreciated) - used to control multiple drone input sources into one output
 
-mode_manager - mux for a posestamped topic(more generically), able to be used directly for offboard control to mavros
+mode_manager - mux for a posestamped topic(more generically), able to be used directly for offboard control to mavros, implements the slow_yaw function too to prevent vio drifting

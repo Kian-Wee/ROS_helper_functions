@@ -90,7 +90,7 @@ class slow_yaw():
         if self.sweeparr==[]:
             print("Sweep ended")
             self.mode="Standby"
-            return angle
+            return math.degrees(euler_from_quaternion([self.uav_pos.rx,self.uav_pos.ry,self.uav_pos.rz,self.uav_pos.rw])[2]) # return the current position (else it defaults to 0)
         
         desiredyaw=self.sweeparr[0]
         self.sweeparr.pop(0)
