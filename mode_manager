@@ -178,7 +178,7 @@ class multiplexer():
                     cmd.pose.position.z=self.prevcmd.pose.position.z
 
                 q = quaternion_from_euler(0, 0, math.radians(self.slowyaw()))
-                cmd.pose.orientation.x=q[0]
+                cmd.pose.orientation.x=q[0]                # time.sleep(0.2)
                 cmd.pose.orientation.y=q[1]
                 cmd.pose.orientation.z=q[2]
                 cmd.pose.orientation.w=q[3]
