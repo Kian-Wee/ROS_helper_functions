@@ -49,6 +49,16 @@ class transform():
             cmdco.pose.pose.orientation.z = cmd.pose.orientation.z
             cmdco.pose.pose.orientation.w = cmd.pose.orientation.w
 
+            cmduwb = PoseWithCovarianceStamped()
+            cmduwb.header.frame_id="/odom"
+            cmduwb.pose.pose.position.x = self.drone_pos_mavros.pose.position.x
+            cmduwb.pose.pose.position.y = self.drone_pos_mavros.pose.position.y
+            cmduwb.pose.pose.position.z = self.drone_pos_mavros.pose.position.z
+            cmduwb.pose.pose.orientation.x = self.drone_pos_mavros.pose.orientation.x
+            cmduwb.pose.pose.orientation.y = self.drone_pos_mavros.pose.orientation.y
+            cmduwb.pose.pose.orientation.z = self.drone_pos_mavros.pose.orientation.z
+            cmduwb.pose.pose.orientation.w = self.drone_pos_mavros.pose.orientation.w
+
             uwb_publish_topic.publish(self.drone_pos_mavros)
 
             local_pos.publish(cmdco)
