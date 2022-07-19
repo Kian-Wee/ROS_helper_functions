@@ -23,7 +23,7 @@ class transform():
         
         self.human_pos_uwb=PoseWithCovarianceStamped()
         rospy.Subscriber('/HumanPose', PoseWithCovarianceStamped, self.human_callback)
-        uwb_publish_topic = rospy.Publisher(publish_topic, PoseWithCovarianceStamped,queue_size=1)
+        self.uwb_publish_topic = rospy.Publisher('/UAV' + drone_number + 'PoseUWB', PoseWithCovarianceStamped,queue_size=1)
         self.drone_pos_uwb=PoseWithCovarianceStamped()
         rospy.Subscriber('/UAV' + drone_number + 'PoseUWB', PoseWithCovarianceStamped, self.drone_uwb_callback)
         self.drone_pos_mavros=PoseStamped()
@@ -49,17 +49,7 @@ class transform():
             cmdco.pose.pose.orientation.z = cmd.pose.orientation.z
             cmdco.pose.pose.orientation.w = cmd.pose.orientation.w
 
-            cmduwb = PoseWithCovarianceStamped()
-            cmduwb.header.frame_id="/odom"
-            cmduwb.pose.pose.position.x = self.drone_pos_mavros.pose.position.x
-            cmduwb.pose.pose.position.y = self.drone_pos_mavros.pose.position.y
-            cmduwb.pose.pose.position.z = self.drone_pos_mavros.pose.position.z
-            cmduwb.pose.pose.orientation.x = self.drone_pos_mavros.pose.orientation.x
-            cmduwb.pose.pose.orientation.y = self.drone_pos_mavros.pose.orientation.y
-            cmduwb.pose.pose.orientation.z = self.drone_pos_mavros.pose.orientation.z
-            cmduwb.pose.pose.orientation.w = self.drone_pos_mavros.pose.orientation.w
 
-            uwb_publish_topic.publish(cmduwb)
 
             local_pos.publish(cmdco)
 
@@ -73,6 +63,18 @@ class transform():
 
     def drone_mavros_callback(self,data):
         self.drone_pos_mavros=data
+
+        cmduwb = PoseWithCovarianceStamped()
+        cmduwb.header.frame_id="/odom"
+        cmduwb.pose.pose.position.x = self.drone_pos_mavros.pose.position.x
+        cmduwb.pose.pose.position.y = self.drone_pos_mavros.pose.position.y
+        cmduwb.pose.pose.position.z = self.drone_pos_mavros.pose.position.z
+        cmduwb.pose.pose.orientation.x = self.drone_pos_mavros.pose.orientation.x
+        cmduwb.pose.pose.orientation.y = self.drone_pos_mavros.pose.orientation.y
+        cmduwb.pose.pose.orientation.z = self.drone_pos_mavros.pose.orientation.z
+        cmduwb.pose.pose.orientation.w = self.drone_pos_mavros.pose.orientation.w
+
+        self.uwb_publish_topic.publish(cmduwb)
 
 
     # rotation
