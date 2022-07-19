@@ -1,0 +1,142 @@
+#!/usr/bin/env python
+
+## Publishes a topic with the the with/after tf transforms
+
+import os
+import rospy
+import math
+import os
+from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+import tf
+from tf2_msgs.msg import TFMessage
+from tf.transformations import *
+import numpy as np
+
+drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
+drone_number = os.getenv('DRONE_NUMBER') #environment variable set in bashrc(or exported in terminal)
+publish_topic = "/HumanUWBUAV" + drone_number+ "Pose"
+
+class transform():
+
+    def __init__(self):
+        
+        self.human_pos_uwb=PoseWithCovarianceStamped()
+        rospy.Subscriber('/HumanPose', PoseWithCovarianceStamped, self.human_callback)
+        uwb_publish_topic = rospy.Publisher(publish_topic, PoseWithCovarianceStamped,queue_size=1)
+        self.drone_pos_uwb=PoseWithCovarianceStamped()
+        rospy.Subscriber('/UAV' + drone_number + 'PoseUWB', PoseWithCovarianceStamped, self.drone_uwb_callback)
+        self.drone_pos_mavros=PoseStamped()
+        rospy.Subscriber(drone_name + '/mavros/local_position/pose', PoseStamped, self.drone_mavros_callback)
+
+        local_pos = rospy.Publisher(publish_topic, PoseWithCovarianceStamped,queue_size=1)
+
+        rate = rospy.Rate(200.0)
+
+        while not rospy.is_shutdown():
+            
+            cmd = PoseStamped()
+            cmd.header.frame_id="/odom"
+            cmd = self.pose_addition(self.pose_diff(self.drone_pos_uwb, self.human_pos_uwb), self.drone_pos_mavros)
+
+            cmdco = PoseWithCovarianceStamped()
+            cmdco.header.frame_id="/odom"
+            cmdco.pose.pose.position.x = cmd.pose.position.x
+            cmdco.pose.pose.position.y = cmd.pose.position.y
+            cmdco.pose.pose.position.z = cmd.pose.position.z
+            cmdco.pose.pose.orientation.x = cmd.pose.orientation.x
+            cmdco.pose.pose.orientation.y = cmd.pose.orientation.y
+            cmdco.pose.pose.orientation.z = cmd.pose.orientation.z
+            cmdco.pose.pose.orientation.w = cmd.pose.orientation.w
+
+            uwb_publish_topic.publish(self.drone_pos_mavros)
+
+            local_pos.publish(cmdco)
+
+            rate.sleep()
+
+    def human_callback(self,data):
+        self.human_pos_uwb=data
+    
+    def drone_uwb_callback(self,data):
+        self.drone_pos_uwb=data
+
+    def drone_mavros_callback(self,data):
+        self.drone_pos_mavros=data
+
+
+    # rotation
+    # Relative rotation q_r from q_1 to q_2
+    # q_2 = q_r*q_1
+    # therefore q_r = q_2*q_1_inverse
+    def pose_diff(self, pose_stamped_previous, pose_staped_now):
+        q1_inv = np.zeros(4)
+        q2 = np.zeros(4)
+        vector_diff = PoseStamped()
+
+        # position vector diff 
+        vector_diff.pose.position.x = pose_staped_now.pose.pose.position.x - pose_stamped_previous.pose.pose.position.x
+        vector_diff.pose.position.y = pose_staped_now.pose.pose.position.y - pose_stamped_previous.pose.pose.position.y
+        vector_diff.pose.position.z = pose_staped_now.pose.pose.position.z - pose_stamped_previous.pose.pose.position.z
+
+        # print("Pose_stamped_now {} {} {}".format(pose_staped_now.pose.position.x, pose_staped_now.pose.position.y, pose_staped_now.pose.position.z))
+        # print("Pose_stamped_previous  {} {} {}".format(pose_stamped_previous.pose.position.x, pose_stamped_previous.pose.position.y, pose_stamped_previous.pose.position.z))
+        # print("Vector diff {} {} {}".format(vector_diff.pose.position.x, vector_diff.pose.position.y, vector_diff.pose.position.z))
+
+        q1_inv[0] = pose_stamped_previous.pose.pose.orientation.x
+        q1_inv[1] = pose_stamped_previous.pose.pose.orientation.y
+        q1_inv[2] = pose_stamped_previous.pose.pose.orientation.z
+        q1_inv[3] = -pose_stamped_previous.pose.pose.orientation.w # Negate for inverse
+
+        q2[0] = pose_staped_now.pose.pose.orientation.x
+        q2[1] = pose_staped_now.pose.pose.orientation.y
+        q2[2] = pose_staped_now.pose.pose.orientation.z
+        q2[3] = pose_staped_now.pose.pose.orientation.w
+
+        qr = quaternion_multiply(q2, q1_inv)
+
+        vector_diff.pose.orientation.x = qr[0]
+        vector_diff.pose.orientation.y = qr[1]
+        vector_diff.pose.orientation.z = qr[2]
+        vector_diff.pose.orientation.w = qr[3]
+
+        return vector_diff
+
+    def pose_addition(self, vector_pose_stamped_to_add, pose_staped_now):
+        q_rot = np.zeros(4)
+        q_origin = np.zeros(4)
+        new_pose_stamped = PoseStamped()
+
+        # position vector diff 
+        new_pose_stamped.pose.position.x = pose_staped_now.pose.position.x + vector_pose_stamped_to_add.pose.position.x
+        new_pose_stamped.pose.position.y = pose_staped_now.pose.position.y + vector_pose_stamped_to_add.pose.position.y
+        new_pose_stamped.pose.position.z = pose_staped_now.pose.position.z + vector_pose_stamped_to_add.pose.position.z
+
+        q_origin[0] = pose_staped_now.pose.orientation.x
+        q_origin[1] = pose_staped_now.pose.orientation.y
+        q_origin[2] = pose_staped_now.pose.orientation.z
+        q_origin[3] = pose_staped_now.pose.orientation.w
+
+        q_rot[0] = vector_pose_stamped_to_add.pose.orientation.x
+        q_rot[1] = vector_pose_stamped_to_add.pose.orientation.y
+        q_rot[2] = vector_pose_stamped_to_add.pose.orientation.z
+        q_rot[3] = vector_pose_stamped_to_add.pose.orientation.w
+
+        q_new = quaternion_multiply(q_rot, q_origin)
+
+        new_pose_stamped.pose.orientation.x = q_new[0]
+        new_pose_stamped.pose.orientation.y = q_new[1]
+        new_pose_stamped.pose.orientation.z = q_new[2]
+        new_pose_stamped.pose.orientation.w = q_new[3]
+
+        return new_pose_stamped
+
+
+if __name__ == '__main__':
+    rospy.init_node(drone_name+'_tf_transformer')
+
+    node = transform()
+
+    rospy.spin()
+
+
