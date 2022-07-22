@@ -14,7 +14,7 @@ Sweep - Stay at current position and yaw to present angles given by this node di
 Distract - Send target pos and yaw given by human directly to S&A
 Nil - use last/previous command
 
-TODO - Maybe add in slowyaw implementation for go_there and before distract 
+TODO - Maybe add in slowyaw implementation for before distract 
 """
 
 import rospy
@@ -66,7 +66,7 @@ class multiplexer():
         rospy.Subscriber(drone_name + "/mavros/setpoint_position/local", PoseStamped, self.setpoint_callback) # To check if the S&A planner has finished planning
         
         # Use Enable this to determine which enable debug message for which stage of planning the drone is at
-        planner_status = True # Enable debugging output
+        planner_status = False # Enable debugging output
         self.planner_status_publisher = rospy.Publisher(drone_name + "/planner_status", String,queue_size=1)
         self.prevplanner_state = ""
 
@@ -76,6 +76,7 @@ class multiplexer():
 
         # Human Input
         rospy.Subscriber('/borealis_hri_output_topic', Borealis_HRI_Output, self.human_callback)
+        self.gothereslowyaw = True # Implements a controlled slow yaw rate for go there
         self.human_command = Borealis_HRI_Output()
         self.prevmode = ""
         self.pos_command = Point()
@@ -109,7 +110,7 @@ class multiplexer():
             if self.teaming_enable == False:
                 self.mock_positions()
 
-            # Send Information to Concensus Global Path or Formation Planner; When process if completed, send new waypoints to Sense & Avoid
+            # Send Information to Concensus Global Pago_there andth or Formation Planner; When process if completed, send new waypoints to Sense & Avoid
             if self.mode=="Follow_Me":
 
                 # Print out debug messages for each stage of planning
@@ -149,10 +150,17 @@ class multiplexer():
                     cmd.pose.position.y=self.teaming_setpoint.pose.position.y
                     cmd.pose.position.z=self.teaming_setpoint.pose.position.z
 
-                    cmd.pose.orientation.x=self.teaming_setpoint.pose.orientation.x
-                    cmd.pose.orientation.y=self.teaming_setpoint.pose.orientation.y
-                    cmd.pose.orientation.z=self.teaming_setpoint.pose.orientation.z
-                    cmd.pose.orientation.w=self.teaming_setpoint.pose.orientation.w
+                    if self.gothereslowyaw == True:
+                        q = quaternion_from_euler(0, 0, math.radians(self.slowyaw(self.yaw_command)))
+                        cmd.pose.orientation.x=q[0]
+                        cmd.pose.orientation.y=q[1]
+                        cmd.pose.orientation.z=q[2]
+                        cmd.pose.orientation.w=q[3]
+                    else:
+                        cmd.pose.orientation.x=self.teaming_setpoint.pose.orientation.x
+                        cmd.pose.orientation.y=self.teaming_setpoint.pose.orientation.y
+                        cmd.pose.orientation.z=self.teaming_setpoint.pose.orientation.z
+                        cmd.pose.orientation.w=self.teaming_setpoint.pose.orientation.w
 
                 else:
                     # rospy.loginfo("No new go there setpoint sent, hovering")
@@ -219,12 +227,12 @@ class multiplexer():
                     cmd.pose.orientation.w=self.uav_pos.rw
                 
             # Always publish the pose, but only print if 1) the pose differs 
-            # self.mode != self.prevmode or
             if self.prevcmd.pose.position.x != cmd.pose.position.x or self.prevcmd.pose.position.y != cmd.pose.position.y or self.prevcmd.pose.position.z != cmd.pose.position.z or self.prevcmd.pose.orientation.w != cmd.pose.orientation.w or self.prevcmd.pose.orientation.x != cmd.pose.orientation.x or self.prevcmd.pose.orientation.y != cmd.pose.orientation.y or self.prevcmd.pose.orientation.z != cmd.pose.orientation.z:
                 # and 2) if drone is not hovering on the spot in idle
                 if (self.prevmode != "Idle" and self.mode != "Idle") or (self.prevmode != "Nil" and self.mode == "Nil"):
                     print(self.mode,"[%.3f, %.3f, %.3f, %.3f deg]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z, math.degrees(euler_from_quaternion([cmd.pose.orientation.x,cmd.pose.orientation.y,cmd.pose.orientation.z,cmd.pose.orientation.w])[2])))
 
+            # cmd.header.stamp.secs=rospy.Time()
             self.drone_setpoint_publisher.publish(cmd)
 
             self.prevcmd = cmd
@@ -253,7 +261,7 @@ class multiplexer():
             yaw = math.degrees(yaw)
             print("Inital yaw:",yaw)
 
-            angle = yaw + 90
+            angle = yaw - 90
             print("Yawing to 90, -90, 0")
 
             print(angle)
@@ -266,7 +274,7 @@ class multiplexer():
                 for i in np.arange(yaw, angle - totaldeg/numofsteps, -totaldeg/numofsteps): self.sweeparr.append(i)
             
             yaw = angle
-            angle = yaw-180
+            angle = yaw + 180
             totaldeg=angle-yaw
             numofsteps=round(totaldeg/w*rate)
             print(angle)
@@ -277,7 +285,7 @@ class multiplexer():
                 for i in np.arange(yaw, angle - totaldeg/numofsteps, -totaldeg/numofsteps): self.sweeparr.append(i)
 
             yaw = angle
-            angle = yaw+90
+            angle = yaw - 90
             totaldeg=angle-yaw
             numofsteps=round(totaldeg/w*rate)
             print(angle)
@@ -313,8 +321,9 @@ class multiplexer():
             return angle
         else:
             if self.sweeparr==[]:
-                print("Sweep ended")
-                self.mode="Idle"
+                if self.mode == "Sweep": # In go there, swap the mode change
+                    print("Sweep ended")
+                    self.mode="Idle"
                 return math.degrees(euler_from_quaternion([self.uav_pos.rx,self.uav_pos.ry,self.uav_pos.rz,self.uav_pos.rw])[2]) # return the current position (else it defaults to 0)
         
         desiredyaw=self.sweeparr[0]
@@ -361,6 +370,8 @@ class multiplexer():
                 self.drone_mode_publisher.publish(self.mode)
                 # time.sleep(0.2)
                 self.drone_formation_publisher.publish(self.human_command_posestamped) # Publish command once to formation planner in follow_me or go_there
+                if self.mode=="Go_There" and self.gothereslowyaw ==True:
+                    self.beginsweep=0
             # Start Sweep
             elif self.mode=="Sweep":
                 self.beginsweep=0
