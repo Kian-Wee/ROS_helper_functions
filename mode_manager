@@ -15,6 +15,7 @@ Distract - Send target pos and yaw given by human directly to S&A
 Nil - use last/previous command
 
 TODO - Maybe add in slowyaw implementation for before distract 
+TODO - atm the end of slowsweep is not the final angle
 """
 
 import rospy
@@ -263,15 +264,14 @@ class multiplexer():
     # Take note that both the inputs and the outputs are in DEGREES, not radians
     def slowyaw(self, angle=720, w=20):
         global rate
-
-        yaw = euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])[2]
+        
+        yaw = math.degrees(euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])[2])
 
         # Preset sweep pattern (45,-45,90,-90)
         # TODO, code is quite inelegant because it was copied from previous method, cleanup code
         if self.beginsweep==0 and angle==720:
             self.sweeparr=[]
             
-            yaw = math.degrees(yaw)
             print("Inital yaw:",yaw)
 
             angle = yaw - 90
@@ -381,12 +381,12 @@ class multiplexer():
 
         # Initalise one time commands
         if self.mode != self.prevmode or self.prevpos_command != self.pos_command or self.prevyaw_command != self.yaw_command:
-            print("new command")
             if (self.mode=="Follow_Me" or self.mode=="Go_There"):
                 self.teaming_pub.publish(True)
                 self.drone_mode_publisher.publish(self.mode)
                 self.drone_formation_publisher.publish(self.human_command_posestamped) # Publish command once to formation planner in follow_me or go_there
                 if self.mode=="Go_There" and self.gothereslowyaw ==True:
+                    print("New go there slow yaw")
                     self.beginsweep=0
             # Start Sweep
             elif self.mode=="Sweep":
