@@ -406,10 +406,10 @@ class multiplexer():
             self.int8array=Int8MultiArray()
             # Check how many drones are in the same mode
             if self.mode == "Follow_Me":
-                for i in np.arange(0, len(msg.uav_state_list) -1, 1):
+                for i in np.arange(0, len(msg.uav_state_list), 1):
                     if msg.uav_state_list[i] == "Follow_Me": self.int8array.data.append(int(i)+int(1)) # Python array starts from 0
             if self.mode == "Go_There":
-                for i in np.arange(0, len(msg.uav_state_list) -1, 1):
+                for i in np.arange(0, len(msg.uav_state_list), 1):
                     if msg.uav_state_list[i] == "Go_There": self.int8array.data.append(int(i)+int(1))
             self.num_agents_pub.publish(self.int8array)
         
