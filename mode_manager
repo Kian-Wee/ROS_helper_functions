@@ -258,7 +258,7 @@ class multiplexer():
 
             self.rosrate.sleep()
 
-    # Slows down sweep to a slower predefined speed, function is made to be non-blocking
+    # Slows down sweep to a slower predefined speed, function is made to be non-blocking and returns a slowed down yaw without altering the position
     # w is angular velocity in degrees per second
     # Not inputting an angle(or putting in 720 degrees) defaults it to a auto sweep mode
     # Take note that both the inputs and the outputs are in DEGREES, not radians
@@ -316,26 +316,26 @@ class multiplexer():
             totaldeg=angle-yaw
             numofsteps=round(totaldeg/w*rate)
             if numofsteps == 0: # This happens if the angle is small and by the end of one rate it will hit the target, so just send the final angle
-                self.sweeparr += [angle] * rate # 1s to turn to direction
+                self.sweeparr += [angle] * rate # Add 1s to turn to final direction
             else:
                 if totaldeg > 0:
                     for i in np.arange(yaw, angle + totaldeg/numofsteps, totaldeg/numofsteps): self.sweeparr.append(i)
                 else:
                     for i in np.arange(yaw, angle - totaldeg/numofsteps, -totaldeg/numofsteps): self.sweeparr.append(i)
-                self.beginsweep=1
-            
-            self.sweeparr += [self.sweeparr[-1]] * rate # 1s to turn to direction
+                        
+            self.sweeparr += [self.sweeparr[-1]] * rate # Add 1s to turn to final direction
+            self.beginsweep=1
 
             # print(self.sweeparr)
         
         # Should never be invoked, left for debugging
         elif self.beginsweep==0 and (yaw - angle) == 0:
             print("Not sweeping as provided angle is the same as current heading")
-            self.mode="Idle"
+            if self.mode=="Sweep":  self.mode="Idle"
             return angle
         elif self.beginsweep==0:
-            print("Not Sweeping")
-            self.mode="Idle"
+            print("This message should not be printing. It means that the sweep array is not created properly and it is Not Sweeping.")
+            if self.mode=="Sweep":  self.mode="Idle"
             return angle
         else:
             if self.sweeparr==[]:
