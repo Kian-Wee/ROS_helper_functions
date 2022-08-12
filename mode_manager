@@ -225,20 +225,22 @@ class multiplexer():
             # If no new command is sent, use previous command
             # THIS SHOULD NEVER BE CALLED CAUSE IT WILL TAKE THE PREVIOUS MODE
             elif self.mode=="Nil":
-                # If the mode was in sweep and Nil is called, continue sweeping
-                if self.prevmode=="Sweep":
-                    print("STILL SWEEPING")
-                    cmd.pose.position.x=self.prevcmd.pose.position.x
-                    cmd.pose.position.y=self.prevcmd.pose.position.y
-                    cmd.pose.position.z=self.prevcmd.pose.position.z
+                print("DRONE INTERNAL STATE SHOULD NEVER BE NIL")
+                # # If the mode was in sweep and Nil is called, continue sweeping
+                # if self.prevmode=="Sweep":
+                #     # print("STILL SWEEPING")
+                #     cmd.pose.position.x=self.prevcmd.pose.position.x
+                #     cmd.pose.position.y=self.prevcmd.pose.position.y
+                #     cmd.pose.position.z=self.prevcmd.pose.position.z
 
-                    q = quaternion_from_euler(0, 0, math.radians(self.slowyaw()))
-                    cmd.pose.orientation.x=q[0]
-                    cmd.pose.orientation.y=q[1]
-                    cmd.pose.orientation.z=q[2]
-                    cmd.pose.orientation.w=q[3]
-                else:
-                    cmd=self.prevcmd
+                #     q = quaternion_from_euler(0, 0, math.radians(self.slowyaw()))
+                #     cmd.pose.orientation.x=q[0]
+                #     cmd.pose.orientation.y=q[1]
+                #     cmd.pose.orientation.z=q[2]
+                #     cmd.pose.orientation.w=q[3]
+                # else:
+                #     cmd=self.prevcmd
+                cmd=self.prevcmd
 
             else:
                 # If the mode is set to idle, grab the first set of coordinates the drone is at and contionusly publish it
@@ -416,7 +418,8 @@ class multiplexer():
             elif self.mode=="Idle":
                 rospy.loginfo("Idle Mode")
             elif self.mode=="Nil":
-                # self.mode==self.prevmode # Overwrite with the previous mode if there is no new command
+                print(self.mode,self.prevmode)
+                self.mode=self.prevmode # Overwrite with the previous mode if there is no new command
                 rospy.loginfo("Nil Mode")
             else:
                 print("No Mode or Invalid Mode")
@@ -431,6 +434,9 @@ class multiplexer():
                     if msg.uav_state_list[i] == "Go_There": self.int8array.data.append(int(i)+int(1))
             self.num_agents_pub.publish(self.int8array)
         
+        if self.mode=="Nil":
+            self.mode=self.prevmode
+
         # Update previous commands
         self.prevpos_command=self.pos_command
         self.prevyaw_command=self.yaw_command
