@@ -47,7 +47,7 @@ class multiplexer():
         self.sweeparr=[]
 
         # Teaming Planner topics
-        self.teaming_enable = True # Set to False to bypass formation planner
+        self.teaming_enable = False # Set to False to bypass formation planner
         self.teaming_pub = rospy.Publisher(drone_name + "/teaming_planner/activate_planner" , Bool,queue_size=1) # pub once
         self.teaming_setpoint = PoseStamped()
         self.prevteaming_setpoint = PoseStamped()
@@ -71,7 +71,8 @@ class multiplexer():
 
         # Local Position Callback
         self.uav_pos = uav()
-        rospy.Subscriber(drone_name + '/mavros/local_position/pose',  PoseStamped, self.local_position_callback)
+        # rospy.Subscriber(drone_name + '/mavros/local_position/pose',  PoseStamped, self.local_position_callback)
+        rospy.Subscriber(drone_name + '/mavros/vision_pose/pose',  PoseStamped, self.local_position_callback)
 
         # Human Input
         rospy.Subscriber('/borealis_hri_output_topic', Borealis_HRI_Output, self.human_callback)
@@ -99,7 +100,7 @@ class multiplexer():
         self.prevcmd = PoseStamped()
         self.rosrate=rospy.Rate(rate)
 
-        time.sleep(0.1)
+        # time.sleep(0.1)
 
         while not rospy.is_shutdown():
 
@@ -223,8 +224,11 @@ class multiplexer():
                     print("Exiting distract mode")
 
             # If no new command is sent, use previous command
+            # THIS SHOULD NEVER BE CALLED CAUSE IT WILL TAKE THE PREVIOUS MODE
             elif self.mode=="Nil":
-                cmd=self.prevcmd
+                rospy.logerr["Drone is in Nil Mode"]
+                # cmd=self.prevcmd
+                pass
 
             else:
                 # If the mode is set to idle, grab the first set of coordinates the drone is at and contionusly publish it
@@ -246,6 +250,8 @@ class multiplexer():
                 # and 2) if drone is not hovering on the spot in idle
                 if (self.prevmode != "Idle" and self.mode != "Idle") or (self.prevmode != "Nil" and self.mode == "Nil"):
                     print(self.mode,"[%.3f, %.3f, %.3f, %.3f deg]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z, math.degrees(euler_from_quaternion([cmd.pose.orientation.x,cmd.pose.orientation.y,cmd.pose.orientation.z,cmd.pose.orientation.w])[2])))
+
+            print(math.degrees(euler_from_quaternion([self.uav_pos.rx, self.uav_pos.ry, self.uav_pos.rz, self.uav_pos.rw])[2]))
 
             self.drone_setpoint_publisher.publish(cmd)
 
@@ -399,6 +405,7 @@ class multiplexer():
             elif self.mode=="Idle":
                 rospy.loginfo("Idle Mode")
             elif self.mode=="Nil":
+                self.mode==self.prevmode # Overwrite with the previous mode if there is no new command
                 rospy.loginfo("Nil Mode")
             else:
                 print("No Mode or Invalid Mode")
