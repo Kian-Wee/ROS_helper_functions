@@ -117,9 +117,9 @@ class multiplexer():
                     self.planner_debug()
 
                 if self.teaming_setpoint.pose.position.z != 0:
-                    cmd.pose.position.x=self.teaming_setpoint.pose.position.x
-                    cmd.pose.position.y=self.teaming_setpoint.pose.position.y
-                    cmd.pose.position.z=self.teaming_setpoint.pose.position.z
+                    cmd.pose.position.x=round(self.teaming_setpoint.pose.position.x,1)
+                    cmd.pose.position.y=round(self.teaming_setpoint.pose.position.y,1)
+                    cmd.pose.position.z=round(self.teaming_setpoint.pose.position.z,1)
 
                     cmd.pose.orientation.x=self.teaming_setpoint.pose.orientation.x
                     cmd.pose.orientation.y=self.teaming_setpoint.pose.orientation.y
@@ -145,9 +145,9 @@ class multiplexer():
                     self.planner_debug()
 
                 if self.teaming_setpoint.pose.position.z != 0:
-                    cmd.pose.position.x=self.teaming_setpoint.pose.position.x
-                    cmd.pose.position.y=self.teaming_setpoint.pose.position.y
-                    cmd.pose.position.z=self.teaming_setpoint.pose.position.z
+                    cmd.pose.position.x=round(self.teaming_setpoint.pose.position.x,1)
+                    cmd.pose.position.y=round(self.teaming_setpoint.pose.position.y,1)
+                    cmd.pose.position.z=round(self.teaming_setpoint.pose.position.z,1)
 
                     if self.gothereslowyaw == True:
                         q = quaternion_from_euler(0, 0, math.radians(self.slowyaw(self.yaw_command)))
