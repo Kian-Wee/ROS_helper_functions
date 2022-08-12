@@ -419,7 +419,7 @@ class multiplexer():
                 rospy.loginfo("Idle Mode")
             elif self.mode=="Nil":
                 self.mode=self.prevmode # Overwrite with the previous mode if there is no new command
-                rospy.loginfo("Nil Mode")
+                # rospy.loginfo("Nil Mode")
             else:
                 print("No Mode or Invalid Mode")
 
