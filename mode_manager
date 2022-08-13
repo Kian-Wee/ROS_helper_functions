@@ -327,7 +327,7 @@ class multiplexer():
                 for i in np.arange(yaw, angle - totaldeg/numofsteps, -totaldeg/numofsteps): self.sweeparr.append(i)
 
             yaw = angle
-            angle = yaw - 90
+            angle = yaw - 120
             totaldeg=angle-yaw
             numofsteps=round(totaldeg/w*rate)
             # print(angle)
