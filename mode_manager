@@ -14,8 +14,9 @@ Sweep - Stay at current position and yaw to present angles given by this node di
 Distract - Send target pos and yaw given by human directly to S&A
 Nil - use last/previous command
 
-TODO - Maybe add in slowyaw implementation for before distract 
-TODO - atm the end of slowsweep is not the final angle
+CHANGELOG - D5 ( Stability improvements)
+More reliable yaw behaviour, checking for the shortest way to turn instead of always incrementing (eg: -179 to 179 should only turn 2 deg)
+To improve stability of the drone, setpoints are further rounded (including quartenion/yaw) to reduce possible localisation drift
 """
 
 import rospy
@@ -30,9 +31,7 @@ import time
 
 drone_name = os.getenv('DRONE_NAME') #environment variable set in bashrc(or exported in terminal)
 drone_number = int(os.getenv('DRONE_NUMBER')) #environment variable set in bashrc(or exported in terminal)
-rate = 5 # Hz, initally 20
-
-
+rate = 5 # Hz
 
 class multiplexer():
 
@@ -41,24 +40,26 @@ class multiplexer():
         global rate
         
         # Distract duration
-        self.distract_duration = 7 #s
+        self.distract_duration = 15 #s
         self.distract_timer = 0 #dont touch
 
         self.sweeparr=[]
 
         # Teaming Planner topics
-        self.teaming_enable = True # Set to False to bypass formation planner
+        self.teaming_enable = False # Set to False to bypass formation planner
         self.teaming_pub = rospy.Publisher(drone_name + "/teaming_planner/activate_planner" , Bool,queue_size=1) # pub once
         self.teaming_setpoint = PoseStamped()
         self.prevteaming_setpoint = PoseStamped()
         rospy.Subscriber(drone_name + "/borealis_teaming_planner/assigned_position_output",  PoseStamped, self.teaming_planner_callback)
-        self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8MultiArray,queue_size=1) # Total number of drones in go there
+        self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8MultiArray,queue_size=1) # Total number of drones in go there or follow me
         self.drone_formation_publisher = rospy.Publisher(drone_name + "/input_pose_stamped", PoseStamped,queue_size=1)
         rospy.Subscriber("/disable_teaming_planner", Bool, self.teaming_override_callback) # used to override disable the formation planner on the fly
         self.int8array=Int8MultiArray()
 
         # Output for Sense&Avoid
-        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/input", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /control_manager/input , /control_manager/mavros_assigned_virtual_position
+        # self.round_setpoint_enable = True # When set to true, setpoints will be rounded to the nearest 10cm and +-5deg (configurable)
+        self.degree = 5 # Round off setpoint degree to +-5
+        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/mavros/setpoint_position/local", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /control_manager/input , /control_manager/mavros_assigned_virtual_position
         self.drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
         self.prevsetpoint = PoseStamped()
@@ -117,7 +118,7 @@ class multiplexer():
                     self.planner_debug()
 
                 if self.teaming_setpoint.pose.position.z != 0:
-                    cmd.pose.position.x=round(self.teaming_setpoint.pose.position.x,1)
+                    cmd.pose.position.x=round(self.teaming_setpoint.pose.position.x,1) # round to 0.1m, +-10cm accuracy which is good enough in practice 
                     cmd.pose.position.y=round(self.teaming_setpoint.pose.position.y,1)
                     cmd.pose.position.z=round(self.teaming_setpoint.pose.position.z,1)
 
@@ -125,6 +126,17 @@ class multiplexer():
                     cmd.pose.orientation.y=self.teaming_setpoint.pose.orientation.y
                     cmd.pose.orientation.z=self.teaming_setpoint.pose.orientation.z
                     cmd.pose.orientation.w=self.teaming_setpoint.pose.orientation.w
+
+                    new_yaw = math.degrees(euler_from_quaternion([self.teaming_setpoint.pose.orientation.x,self.teaming_setpoint.pose.orientation.y,self.teaming_setpoint.pose.orientation.z,self.teaming_setpoint.pose.orientation.w])[2])
+                    current_yaw = math.degrees(euler_from_quaternion([self.prevcmd.pose.orientation.x,self.prevcmd.pose.orientation.y,self.prevcmd.pose.orientation.z,self.prevcmd.pose.orientation.w])[2])
+                    # Assign new yaw only if the degrees is more than the threshold of previous yaw
+                    if new_yaw - self.degree <= current_yaw <= new_yaw + self.degree:
+                        cmd.pose.orientation.x = self.prevcmd.pose.orientation.x-185.99153293180063
+                    else:
+                        cmd.pose.orientation.x = self.teaming_setpoint.pose.orientation.x
+                        cmd.pose.orientation.y = self.teaming_setpoint.pose.orientation.y
+                        cmd.pose.orientation.z = self.teaming_setpoint.pose.orientation.z
+                        cmd.pose.orientation.w = self.teaming_setpoint.pose.orientation.w
 
                 else:
                     # rospy.loginfo("No new follow me setpoint sent, hovering")
@@ -149,17 +161,27 @@ class multiplexer():
                     cmd.pose.position.y=round(self.teaming_setpoint.pose.position.y,1)
                     cmd.pose.position.z=round(self.teaming_setpoint.pose.position.z,1)
 
-                    if self.gothereslowyaw == True:
-                        q = quaternion_from_euler(0, 0, math.radians(self.slowyaw(self.yaw_command)))
-                        cmd.pose.orientation.x=q[0]
-                        cmd.pose.orientation.y=q[1]
-                        cmd.pose.orientation.z=q[2]
-                        cmd.pose.orientation.w=q[3]
+                    new_yaw = math.degrees(euler_from_quaternion([self.teaming_setpoint.pose.orientation.x,self.teaming_setpoint.pose.orientation.y,self.teaming_setpoint.pose.orientation.z,self.teaming_setpoint.pose.orientation.w])[2])
+                    current_yaw = math.degrees(euler_from_quaternion([self.prevcmd.pose.orientation.x,self.prevcmd.pose.orientation.y,self.prevcmd.pose.orientation.z,self.prevcmd.pose.orientation.w])[2])
+                    # Assign new yaw only if the degrees is more than the threshold of previous yaw
+                    if new_yaw - self.degree <= current_yaw <= new_yaw + self.degree:
+                        cmd.pose.orientation.x = self.prevcmd.pose.orientation.x
+                        cmd.pose.orientation.y = self.prevcmd.pose.orientation.y
+                        cmd.pose.orientation.z = self.prevcmd.pose.orientation.z
+                        cmd.pose.orientation.w = self.prevcmd.pose.orientation.w
+
                     else:
-                        cmd.pose.orientation.x=self.teaming_setpoint.pose.orientation.x
-                        cmd.pose.orientation.y=self.teaming_setpoint.pose.orientation.y
-                        cmd.pose.orientation.z=self.teaming_setpoint.pose.orientation.z
-                        cmd.pose.orientation.w=self.teaming_setpoint.pose.orientation.w
+                        if self.gothereslowyaw == True:
+                            q = quaternion_from_euler(0, 0, math.radians(self.slowyaw(self.yaw_command)))
+                            cmd.pose.orientation.x=q[0]
+                            cmd.pose.orientation.y=q[1]
+                            cmd.pose.orientation.z=q[2]
+                            cmd.pose.orientation.w=q[3]
+                        else:
+                            cmd.pose.orientation.x=self.teaming_setpoint.pose.orientation.x
+                            cmd.pose.orientation.y=self.teaming_setpoint.pose.orientation.y
+                            cmd.pose.orientation.z=self.teaming_setpoint.pose.orientation.z
+                            cmd.pose.orientation.w=self.teaming_setpoint.pose.orientation.w
 
                 else:
                     # rospy.loginfo("No new go there setpoint sent, hovering")
@@ -253,10 +275,9 @@ class multiplexer():
                 cmd=self.prevcmd
 
             else:
-                # If the mode is set to idle, grab the first set of coordinates the drone is at and contionusly publish it
+                # If the mode is set to idle, grab the first set of coordinates the drone is at and contionusly publish it to hover at current position
                 if self.mode=="Idle" and self.prevmode=="Idle":
                     cmd=self.prevcmd
-            # If there are no other new commands, set to hover at current position
                 else:
                     cmd.pose.position.x=self.uav_pos.x
                     cmd.pose.position.y=self.uav_pos.y
@@ -266,7 +287,7 @@ class multiplexer():
                     cmd.pose.orientation.y=self.uav_pos.ry
                     cmd.pose.orientation.z=self.uav_pos.rz
                     cmd.pose.orientation.w=self.uav_pos.rw
-                
+
             # Always publish the pose, but only print if 1) the pose differs 
             if self.prevcmd.pose.position.x != cmd.pose.position.x or self.prevcmd.pose.position.y != cmd.pose.position.y or self.prevcmd.pose.position.z != cmd.pose.position.z or self.prevcmd.pose.orientation.w != cmd.pose.orientation.w or self.prevcmd.pose.orientation.x != cmd.pose.orientation.x or self.prevcmd.pose.orientation.y != cmd.pose.orientation.y or self.prevcmd.pose.orientation.z != cmd.pose.orientation.z:
                 # and 2) if drone is not hovering on the spot in idle
@@ -312,7 +333,6 @@ class multiplexer():
             if totaldeg > 0:
                 for i in np.arange(yaw, angle + totaldeg/numofsteps, totaldeg/numofsteps): self.sweeparr.append(i)
             else:
-                print(angle - totaldeg/numofsteps)
                 for i in np.arange(yaw, angle - totaldeg/numofsteps, -totaldeg/numofsteps): self.sweeparr.append(i)
             
             yaw = angle
@@ -323,7 +343,6 @@ class multiplexer():
             if totaldeg > 0:
                 for i in np.arange(yaw, angle + totaldeg/numofsteps, totaldeg/numofsteps): self.sweeparr.append(i)
             else:
-                print(angle - totaldeg/numofsteps)
                 for i in np.arange(yaw, angle - totaldeg/numofsteps, -totaldeg/numofsteps): self.sweeparr.append(i)
 
             yaw = angle
@@ -338,11 +357,34 @@ class multiplexer():
 
             self.beginsweep=1
 
+        # Slow Yaw for any other non-sweep commands
         elif self.beginsweep==0 and int(yaw - angle) != 0:
             self.sweeparr=[]
             print("Yawing from {0} to {1}".format(yaw,angle))
 
-            totaldeg=angle-yaw
+            # This entire block of code is required to ensure that the drone rotates in the shortest angle to its next setpoint
+            # By ros convention, any +ve yaw angle results in a ccw rotation and -ve yaw angle results in a cw rotation
+            # So while 181deg will result in the same rotation as -179deg, the rotation will be in the opposite way
+            # If a uav with heading 179 degrees has to go to a heading of -179deg, it will rotate the entire 358 degrees the other way instead of 2 degrees
+            
+            if angle<0: otherangle=angle+180
+            else: otherangle=180-angle
+
+            if yaw<0: otheryaw=yaw+180
+            else: otheryaw=180-yaw
+
+            if abs(angle-yaw) < abs(otherangle) + abs(otheryaw):
+                totaldeg=angle-yaw # Perform no correction
+            else:
+                added_angle = abs(otherangle) + abs(otheryaw)
+                if yaw<0: 
+                    angle=yaw-added_angle # Yaw -ve, subtract more
+                    totaldeg= -added_angle
+                else:
+                    angle=yaw+added_angle # Yaw +ve, add more
+                    totaldeg=added_angle
+                print("Correcting yaw from {0} to {1}".format(yaw,angle))
+                
             numofsteps=round(totaldeg/w*rate)
             if numofsteps == 0: # This happens if the angle is small and by the end of one rate it will hit the target, so just send the final angle
                 self.sweeparr += [angle] * rate # Add 1s to turn to final direction
@@ -351,29 +393,32 @@ class multiplexer():
                     for i in np.arange(yaw, angle + totaldeg/numofsteps, totaldeg/numofsteps): self.sweeparr.append(i)
                 else:
                     for i in np.arange(yaw, angle - totaldeg/numofsteps, -totaldeg/numofsteps): self.sweeparr.append(i)
-                        
+            print(totaldeg)
+            print(self.sweeparr)
             self.sweeparr += [self.sweeparr[-1]] * rate # Add 1s to turn to final direction
             self.beginsweep=1
-
-            # print(self.sweeparr)
         
-        # Should never be invoked, left for debugging
+        # Should not be invoked either
         elif self.beginsweep==0 and (yaw - angle) == 0:
             print("Not sweeping as provided angle is the same as current heading")
             if self.mode=="Sweep":  self.mode="Idle"
             return angle
+
+        # Should never be invoked, left for debugging
         elif self.beginsweep==0:
             print("This message should not be printing. It means that the sweep array is not created properly and it is Not Sweeping.")
             if self.mode=="Sweep":  self.mode="Idle"
             return angle
-        else:
-            if self.sweeparr==[]:
-                if self.mode == "Sweep": # In go there, swap the mode change
-                    print("Sweep ended")
-                    self.mode="Idle"
-                return angle
-                # return math.degrees(euler_from_quaternion([self.uav_pos.rx,self.uav_pos.ry,self.uav_pos.rz,self.uav_pos.rw])[2]) # return the current position (else it defaults to 0)
+
+        # Sweep Ended, returning to preset angle
+        elif self.sweeparr==[]:
+            if self.mode == "Sweep": # In go there, swap the mode change
+                print("Sweep ended")
+                self.mode="Idle"
+            return angle # Ensures the drone will yaws to the final angle in the end even if it yaws slower
+            # return math.degrees(euler_from_quaternion([self.uav_pos.rx,self.uav_pos.ry,self.uav_pos.rz,self.uav_pos.rw])[2]) # return the current position (else it defaults to 0)
         
+        # Else, pop 1 element and return angle
         desiredyaw=self.sweeparr[0]
         self.sweeparr.pop(0)
         return desiredyaw
@@ -450,6 +495,35 @@ class multiplexer():
         self.prevpos_command=self.pos_command
         self.prevyaw_command=self.yaw_command
 
+    # # Rounds off values to prevent excessive insignificant setpoints to be sent to the uav
+    # # Takes the current command(posestamped), previous command(posestamped), rounding of cartesian coordinates(1 = 0.1m), rounding of degrees[only setpoints +- 5 will be sent]
+    # def round_setpoint(self, command, prevcommand, cartesian=1, degree=5):
+    #     newcmd=PoseStamped()
+    #     newcmd.pose.position.x = round(command.pose.position.x,cartesian)
+    #     newcmd.pose.position.y = round(command.pose.position.y,cartesian)
+    #     newcmd.pose.position.z = round(command.pose.position.z,cartesian)
+
+    #     # TODO, LOGIC OF SLOW YAW
+    #     if self.mode == "Sweep":
+    #         newcmd.pose.orientation.x = command.pose.orientation.x
+    #         newcmd.pose.orientation.y = command.pose.orientation.y
+    #         newcmd.pose.orientation.z = command.pose.orientation.z
+    #         newcmd.pose.orientation.w = command.pose.orientation.w
+    #     else:
+    #         new_yaw = math.degrees(euler_from_quaternion([command.pose.orientation.x,command.pose.orientation.y,command.pose.orientation.z,command.pose.orientation.w])[2])
+    #         current_yaw = math.degrees(euler_from_quaternion([prevcommand.pose.orientation.x,prevcommand.pose.orientation.y,prevcommand.pose.orientation.z,prevcommand.pose.orientation.w])[2])
+    #         # Assign new yaw only if the degrees is more than the threshold of previous yaw
+    #         if new_yaw - degree <= current_yaw <= new_yaw + degree:
+    #             newcmd.pose.orientation.x = prevcommand.pose.orientation.x
+    #             newcmd.pose.orientation.y = prevcommand.pose.orientation.y
+    #             newcmd.pose.orientation.z = prevcommand.pose.orientation.z
+    #             newcmd.pose.orientation.w = prevcommand.pose.orientation.w
+    #         else:
+    #             newcmd.pose.orientation.x = command.pose.orientation.x
+    #             newcmd.pose.orientation.y = command.pose.orientation.y
+    #             newcmd.pose.orientation.z = command.pose.orientation.z
+    #             newcmd.pose.orientation.w = command.pose.orientation.w
+
     # This function enables print statement and a topic to check what stage of planning the drone is at
     def planner_debug(self):
 
@@ -489,6 +563,7 @@ class multiplexer():
             self.teaming_setpoint.pose.orientation.z=q[2]
             self.teaming_setpoint.pose.orientation.w=q[3]
             
+            # Mock follow me implementation to allow for following at safe distances
             if self.mode == "Follow_Me" and drone_number == 2:
                 self.teaming_setpoint.pose.position.x = self.teaming_setpoint.pose.position.x - 2
             elif self.mode == "Follow_Me" and drone_number == 3:
