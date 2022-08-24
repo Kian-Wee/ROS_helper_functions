@@ -8,6 +8,8 @@ slow_yaw - module to enable a mavros uav to yaw at a controlled rate to prevent 
 
 position_benchmark - benchmark 2 positional sources to check accuracy (ie measured vs ground truth)
 
+message_generator - generates output message at a topic with random noise
+
 ## Borealis specific
 
 mock_multiplexer(depreciated) - used to control multiple drone input sources into one output
