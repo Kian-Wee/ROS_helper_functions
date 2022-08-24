@@ -596,7 +596,7 @@ class multiplexer():
             # Timer if else statement to check if longer than duration
             if self.followmeyawtimer + self.followmeyawduration < time.time():
                 self.followmeyawtimer = time.time()
-                self.beginsweep=1
+                self.beginsweep=0
                 return np.median(self.followmeyawarr) # Return moving average
             else:
                 pass # Needs to return previous command if there is no input, error checking for return None is done above
