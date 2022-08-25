@@ -48,7 +48,6 @@ class message_generator():
                 if printoutput == True: print(msg)
                 self.publisher.publish(msg)
 
-
             self.rosrate.sleep()
 
 
