@@ -580,7 +580,7 @@ class multiplexer():
             # Mock follow me implementation to allow for following at safe distances
             if self.mode == "Follow_Me" and drone_number == 2:
                 self.teaming_setpoint.pose.position.x = self.teaming_setpoint.pose.position.x - 2
-            elif self.mode == "Follow_Me" and drone_number == 1:
+            elif self.mode == "Follow_Me" and drone_number == 3:
                 self.teaming_setpoint.pose.position.x = self.teaming_setpoint.pose.position.x - 4
     
     # Accumulates the position of the unstable human yaw odometry and moving averages(median to be more exact) it to prevent VIO localisation yaw drift and erratic movements of the drone
