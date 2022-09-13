@@ -641,7 +641,7 @@ class uav():
 
 
 if __name__ == '__main__':
-    rospy.init_node(drone_name + '/Mode_Manager')
+    rospy.init_node(drone_name + '_Mode_Manager')
 
     node = multiplexer()
 
