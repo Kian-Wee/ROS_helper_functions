@@ -51,7 +51,7 @@ class multiplexer():
         self.sweeparr=[]
 
         # Teaming Planner topics
-        self.teaming_enable = False # Set to False to bypass formation planner
+        self.teaming_enable = True # Set to False to bypass formation planner
         self.teaming_pub = rospy.Publisher(drone_name + "/teaming_planner/activate_planner" , Bool,queue_size=1) # pub once
         self.teaming_setpoint = PoseStamped()
         self.prevteaming_setpoint = PoseStamped()
@@ -76,7 +76,7 @@ class multiplexer():
         # Output for Sense&Avoid
         # self.round_setpoint_enable = True # When set to true, setpoints will be rounded to the nearest 10cm and +-5deg (configurable)
         self.degree = 5 # Round off setpoint degree to +-5
-        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/mavros_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /control_manager/input , /control_manager/mavros_assigned_virtual_position
+        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/mavros/setpoint_position/local", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /control_manager/input , /control_manager/mavros_assigned_virtual_position
         self.drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
         self.prevsetpoint = PoseStamped()
@@ -137,7 +137,7 @@ class multiplexer():
                 if self.teaming_setpoint.pose.position.z != 0:
                     cmd.pose.position.x=round(self.teaming_setpoint.pose.position.x,1) # round to 0.1m, +-10cm accuracy which is good enough in practice 
                     cmd.pose.position.y=round(self.teaming_setpoint.pose.position.y,1)
-                    cmd.pose.position.z=round(self.teaming_setpoint.pose.position.z,1)
+                    cmd.pose.position.z=1.2
 
                     # cmd.pose.orientation.x=self.teaming_setpoint.pose.orientation.x
                     # cmd.pose.orientation.y=self.teaming_setpoint.pose.orientation.y
@@ -195,7 +195,7 @@ class multiplexer():
                 if self.teaming_setpoint.pose.position.z != 0:
                     cmd.pose.position.x=round(self.teaming_setpoint.pose.position.x,1)
                     cmd.pose.position.y=round(self.teaming_setpoint.pose.position.y,1)
-                    cmd.pose.position.z=round(self.teaming_setpoint.pose.position.z,1)
+                    cmd.pose.position.z=1.2
 
                     # # This whole block of code is responsible for assigning the yaw
                     # new_yaw = math.degrees(euler_from_quaternion([self.teaming_setpoint.pose.orientation.x,self.teaming_setpoint.pose.orientation.y,self.teaming_setpoint.pose.orientation.z,self.teaming_setpoint.pose.orientation.w])[2])
