@@ -76,7 +76,7 @@ class multiplexer():
         # Output for Sense&Avoid
         # self.round_setpoint_enable = True # When set to true, setpoints will be rounded to the nearest 10cm and +-5deg (configurable)
         self.degree = 5 # Round off setpoint degree to +-5
-        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/mavros/setpoint_position/local", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /control_manager/input , /control_manager/mavros_assigned_virtual_position
+        self.drone_setpoint_publisher = rospy.Publisher(drone_name + "/control_manager/mavros_assigned_virtual_position", PoseStamped,queue_size=1) # Change to /mavros/setpoint_position/local for direct pub, /control_manager/input , /control_manager/mavros_assigned_virtual_position
         self.drone_mode_publisher = rospy.Publisher(drone_name + "/hri_mode", String,queue_size=1)
         self.setpoint = PoseStamped()
         self.prevsetpoint = PoseStamped()
