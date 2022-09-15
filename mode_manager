@@ -51,7 +51,7 @@ class multiplexer():
         self.sweeparr=[]
 
         # Teaming Planner topics
-        self.teaming_enable = True # Set to False to bypass formation planner
+        self.teaming_enable = False # Set to False to bypass formation planner
         self.teaming_pub = rospy.Publisher(drone_name + "/teaming_planner/activate_planner" , Bool,queue_size=1) # pub once
         self.teaming_setpoint = PoseStamped()
         self.prevteaming_setpoint = PoseStamped()
