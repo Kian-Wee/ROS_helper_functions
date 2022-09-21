@@ -18,64 +18,25 @@ class transform():
     def __init__(self, global_pos_topic ="/UAV" + str(os.getenv('DRONE_NUMBER')) + "PoseUWB", local_pos_topic = os.getenv('DRONE_NAME') + "/mavros/local_position/pose"):
 
         # Variables
-        # self.cmd = PoseStamped()
-        # self.uav_ap_uwb = PoseStamped()
         self.uav_mavros_pose = PoseStamped()
         self.uav_uwb_pose = PoseStamped()
-        # self.input_pose_stamped = PoseStamped()
-        # self.mode = String()
         self.prev_pose = PoseStamped()
 
         self.recieved_new_ap_callback = False
         self.recieved_new_ap_callback_uav2 = False
         self.drone_name = "/uav" + os.getenv('DRONE_NUMBER')
-        # self.ap_uwb_pose_topic = self.drone_name + "/control_manager/input"
         self.mavros_pose_topic = self.drone_name + "/mavros/local_position/pose"
         self.uwb_pose_topic = "/UAV" + os.getenv('DRONE_NUMBER') + "PoseUWB"
         self.uav_publish_topic = self.drone_name + "/control_manager/mavros_assigned_virtual_position"
-        # self.uav_publish_topic = self.drone_name + "/mavros/setpoint_position/local"
-        # self.uav_mode_topic = "/uav" + os.getenv('DRONE_NUMBER') + "/hri_mode"
-        # self.uav_input_pose_topic = "/uav" + os.getenv('DRONE_NUMBER') + "/input_pose_stamped"
-
-        # rospy.Subscriber(self.ap_uwb_pose_topic,  PoseStamped, self.uav_ap_uwb_callback)
         rospy.Subscriber(local_pos_topic,  PoseStamped, self.uav_mavros_callback)
         rospy.Subscriber(global_pos_topic,  PoseWithCovarianceStamped, self.uav_uwb_callback)
-        # rospy.Subscriber(self.uav_mode_topic,  String, self.hri_mode_callback)
-        # rospy.Subscriber(self.uav_input_pose_topic,  PoseStamped, self.uav_input_pose_topic_callback)
 
-        # mavros_ap_publisher = rospy.Publisher(self.uav_publish_topic , PoseStamped,queue_size=1)
-
-        # rate = rospy.Rate(10)
-
-        # while not rospy.is_shutdown():
 
     def global_to_local(self, input_pose):
         # print("Looking up Global to Local")
         final_pose_uav  = PoseStamped()
         vector_diff_uav = PoseStamped()
 
-        # if self.recieved_new_ap_callback:
-        #     if self.mode == "Go_There": 
-        #         # vector_diff_uav = self.pose_diff(self.uav_uwb_pose, self.uav_ap_uwb)
-        #         # final_pose_uav = self.pose_addition(vector_diff_uav, self.uav_mavros_pose)
-        #         # self.cmd = final_pose_uav
-        #         # self.cmd.pose.orientation = self.uav_ap_uwb.pose.orientation # Do not transform orientation
-        #         self.cmd = self.uav_ap_uwb 
-                
-        #     elif self.mode == "Follow_Me":
-        #         # In Follow me mode, the formation generation algorithm will generate some unstable orientation due to the human orientation
-        #         # Being quite unstable, thus the drone should always look forward
-        #         # vector_diff_uav = self.pose_diff(self.uav_uwb_pose, self.uav_ap_uwb)
-        #         # final_pose_uav = self.pose_addition(vector_diff_uav, self.uav_mavros_pose)
-        #         # self.cmd = final_pose_uav
-        #         self.cmd = self.uav_ap_uwb
-        #         self.cmd.pose.orientation.x = 0
-        #         self.cmd.pose.orientation.y = 0
-        #         self.cmd.pose.orientation.z = 0
-        #         self.cmd.pose.orientation.w = 1
-        #     else:
-        #         self.cmd = self.uav_ap_uwb # default
-        #     self.recieved_new_ap_callback = False
         if self.uav_uwb_pose.pose.orientation.w==0:
             rospy.logwarn_once("UWB Positioning Not Initalised Yet")
             final_pose_uav = input_pose # In the case that UWB is not initalised, just use the current pose
@@ -87,33 +48,16 @@ class transform():
         else:
             final_pose_uav = self.prev_pose
 
-        # print(input_pose)
-        # print(self.prev_pose)
-        # self.cmd.pose.position.z = 1.2
         final_pose_uav.header.frame_id = '/odom'
         self.prev_pose=input_pose
-        # mavros_ap_publisher.publish(self.cmd)
         return final_pose_uav
-
-    # def uav_ap_uwb_callback(self,data):
-    #     if (self.uav_ap_uwb.pose.position.x != data.pose.position.x or self.uav_ap_uwb.pose.position.y != data.pose.position.y or self.uav_ap_uwb.pose.position.z != data.pose.position.z or self.uav_ap_uwb.pose.orientation.x != data.pose.orientation.x or self.uav_ap_uwb.pose.orientation.y != data.pose.orientation.y or self.uav_ap_uwb.pose.orientation.z != data.pose.orientation.z or self.uav_ap_uwb.pose.orientation.w != data.pose.orientation.w):
-    #         self.recieved_new_ap_callback = True
-    #         self.uav_ap_uwb = data
-    #     else:
-    #         self.recieved_new_ap_callback = False
 
     def uav_mavros_callback(self,data):
         self.uav_mavros_pose = data
-
-    # def uav_input_pose_topic_callback(self,data):
-    #     self.input_pose_stamped = data
     
     def uav_uwb_callback(self,data):
         self.uav_uwb_pose.pose = data.pose.pose
         self.uav_uwb_pose.header = data.header
-    
-    # def hri_mode_callback(self, data):
-    #     self.mode = data.data
 
     # rotation
     # Relative rotation q_r from q_1 to q_2

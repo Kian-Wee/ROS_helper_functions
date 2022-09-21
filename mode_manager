@@ -53,7 +53,7 @@ class multiplexer():
         # Teaming Planner topics
         self.teaming_enable = True # Set to False to bypass formation planner
         self.teaming_pub = rospy.Publisher(drone_name + "/teaming_planner/activate_planner" , Bool,queue_size=1) # pub once
-        self.teaming_setpoint = PoseStamped()
+        self.teaming_setpoint = PoseStamped()   
         self.prevteaming_setpoint = PoseStamped()
         rospy.Subscriber(drone_name + "/borealis_teaming_planner/assigned_position_output",  PoseStamped, self.teaming_planner_callback)
         self.num_agents_pub = rospy.Publisher(drone_name + "/number_of_agents_in_team" , Int8MultiArray,queue_size=1) # Total number of drones in go there or follow me
@@ -337,10 +337,11 @@ class multiplexer():
 
             #  Always publish the pose, but only print if drone is not hovering on the spot in idle
             if (self.prevmode != "Idle" and self.mode != "Idle") or (self.prevmode != "Nil" and self.mode == "Nil"):
+                cmd = uwb_translate.global_to_local(cmd) # Do global to local lookup only if drone is not in idle or nil mode ( as it already calls back the local position)
                 # and 2) if the pose differs 
                 if self.prevcmd.pose.position.x != cmd.pose.position.x or self.prevcmd.pose.position.y != cmd.pose.position.y or self.prevcmd.pose.position.z != cmd.pose.position.z or self.prevcmd.pose.orientation.w != cmd.pose.orientation.w or self.prevcmd.pose.orientation.x != cmd.pose.orientation.x or self.prevcmd.pose.orientation.y != cmd.pose.orientation.y or self.prevcmd.pose.orientation.z != cmd.pose.orientation.z:
                     print(self.mode,"[%.3f, %.3f, %.3f, %.3f deg]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z, math.degrees(euler_from_quaternion([cmd.pose.orientation.x,cmd.pose.orientation.y,cmd.pose.orientation.z,cmd.pose.orientation.w])[2])))
-                cmd = uwb_translate.global_to_local(cmd) # Do global to local lookup only if drone is not in idle or nil mode ( as it already calls back the local position)
+                
 
             self.drone_setpoint_publisher.publish(cmd)
 
@@ -415,7 +416,8 @@ class multiplexer():
             # By ros convention, any +ve yaw angle results in a ccw rotation and -ve yaw angle results in a cw rotation
             # So while 181deg will result in the same rotation as -179deg, the rotation will be in the opposite way
             # If a uav with heading 179 degrees has to go to a heading of -179deg, it will rotate the entire 358 degrees the other way instead of 2 degrees
-            
+            # only tested from angles -180 to 180, beyond that the code breaks
+
             if angle<0: otherangle=angle+180
             else: otherangle=180-angle
 
