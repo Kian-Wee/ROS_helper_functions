@@ -337,7 +337,14 @@ class multiplexer():
 
             #  Always publish the pose, but only print if drone is not hovering on the spot in idle
             if (self.prevmode != "Idle" and self.mode != "Idle") or (self.prevmode != "Nil" and self.mode == "Nil"):
-                cmd = uwb_translate.global_to_local(cmd) # Do global to local lookup only if drone is not in idle or nil mode ( as it already calls back the local position)
+                if self.mode == "Follow_Me" or self.mode == "Go_There":
+                    cmd = uwb_translate.global_to_local(cmd) # Do global to local lookup only if drone is not in idle or nil mode ( as it already calls back the local position)
+                if self.mode == "Follow_Me":
+                    q = quaternion_from_euler(0, 0, 0)
+                    cmd.pose.orientation.x=q[0]
+                    cmd.pose.orientation.y=q[1]
+                    cmd.pose.orientation.z=q[2]
+                    cmd.pose.orientation.w=q[3]
                 # and 2) if the pose differs 
                 if self.prevcmd.pose.position.x != cmd.pose.position.x or self.prevcmd.pose.position.y != cmd.pose.position.y or self.prevcmd.pose.position.z != cmd.pose.position.z or self.prevcmd.pose.orientation.w != cmd.pose.orientation.w or self.prevcmd.pose.orientation.x != cmd.pose.orientation.x or self.prevcmd.pose.orientation.y != cmd.pose.orientation.y or self.prevcmd.pose.orientation.z != cmd.pose.orientation.z:
                     print(self.mode,"[%.3f, %.3f, %.3f, %.3f deg]" % (cmd.pose.position.x,cmd.pose.position.y,cmd.pose.position.z, math.degrees(euler_from_quaternion([cmd.pose.orientation.x,cmd.pose.orientation.y,cmd.pose.orientation.z,cmd.pose.orientation.w])[2])))
