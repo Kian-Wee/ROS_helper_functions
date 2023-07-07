@@ -1,0 +1,256 @@
+#!/usr/bin/env python
+
+import rospy
+import math
+import os
+from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+# from tf.transformations import euler_from_quaternion
+from tf2_msgs.msg import TFMessage
+from std_msgs.msg import Int32, Float64, String, Bool
+import numpy as np
+from transforms3d import _gohlketransforms,euler
+from math import degrees, radians
+
+# Type of drone
+typedrone = "wall" # wall / lamp 
+
+# For alignment of camera_frame to drone_frame(CG), in m
+cameratobody_x =0 # +ve is forward
+cameratobody_y =0 # +ve is left
+cameratobody_z =0 # +ve is up 
+
+# Camera Topic for desired setpoint
+camera_setpoint_topic="/camera_setpoint" # if tf is not in use
+camera_frame_id="/camera"
+world_frame_id="/world"
+
+# Setpoint Topic to publish to
+setpoint_topic="/mavros/setpoint_position/local"
+local_position_topic="/mavros/local_position/pose"
+
+# Threshold for jogging, when setpoint is under these conditions, drone will jog instead
+threshold_jog=0.5 #m
+threshold_jog_deg=10 #deg
+# Rear Thruster Topic
+thruster_output_topic="/thruster/pwm"
+
+# Update rate
+rate = 1/60 #10 times every second
+
+
+class controller():
+
+    def __init__(self):
+        print("Initalising Controller")
+
+        # rospy.Subscriber(
+        #     camera_setpoint_topic,
+        #     PoseStamped,
+        #     self.camera_listener_callback)
+        rospy.Subscriber(
+            camera_setpoint_topic,
+            TFMessage,
+            self.camera_listener_callback)
+        self.camera_setpoint = uav_variables()
+        self.last_acceptable_setpoint = uav_variables()
+        self.last_acceptable_setpoint = self.camera_setpoint
+
+
+        rospy.Subscriber(
+            local_position_topic,
+            PoseStamped,
+            self.local_position_listener_callback)
+        self.local_position = uav_variables()
+        # self.eul_deg=np.array([0,0,0])
+        # self.rad_deg=np.array([0,0,0,0])
+
+        self.setpoint_publisher_ = rospy.Publisher(setpoint_topic, PoseStamped, queue_size=1)
+        self.thruster_publisher_ = rospy.Publisher(thruster_output_topic, Int32, queue_size=1)
+
+        # Far Controller variables
+        self.kp_x = 0.5
+        self.kd_x = 0.125
+        self.kp_y = 0.5
+        self.kd_y = 0.125
+        self.kp_z = 0.5
+        self.kd_z = 0.8
+        self.kp_yaw = 0.25
+        self.kd_yaw = 0.0625
+        self.error_past = np.array([0,0,0,0])
+        self.feedback = np.array([self.local_position.x, self.local_position.y, self.local_position.z]) # FOR REFERENCE ONLY, DELETE LATER
+
+        # Close Controller variables
+        self.kp_xc = 0.1
+        self.kd_xc = 0.125
+        self.kp_yc = 0.1
+        self.kd_yc = 0.125
+        self.kp_zc = 0.1
+        self.kd_zc = 0.8
+        self.kp_yawc = 0.5
+        self.kd_yawc = 0.0625
+        self.error_pastc = np.array([0,0,0,0])
+
+        self.rosrate=rospy.Rate(1/rate)
+
+        print("Finish initalising Controller")
+
+
+    def camera_listener_callback(self, msg):
+        rospy.loginfo("New Camera setpoint(x:"+str(msg.pose.position.x)+", y:"+str(msg.pose.position.y)+", z:"+str(msg.pose.position.z)+")")
+                # If TF is used as the as the position
+        if msg._type=="tf2_msgs/TFMessage":
+            if msg.transforms[0].header.frame_id == world_frame_id and msg.transforms[0].child_frame_id == camera_frame_id:
+                self.camera_setpoint.x = msg.transforms[0].transform.translation.x
+                self.camera_setpoint.y = msg.transforms[0].transform.translation.y
+                self.camera_setpoint.z = msg.transforms[0].transform.translation.z
+                self.camera_setpoint.rx = msg.transforms[0].transform.rotation.x
+                self.camera_setpoint.ry = msg.transforms[0].transform.rotation.y
+                self.camera_setpoint.rz = msg.transforms[0].transform.rotation.z
+                self.camera_setpoint.rw = msg.transforms[0].transform.rotation.w
+        elif msg._type=="geometry_msgs/PoseStamped":
+            self.camera_setpoint.x = msg.pose.position.x
+            self.camera_setpoint.y = msg.pose.position.y
+            self.camera_setpoint.z = msg.pose.position.z
+            self.camera_setpoint.rw = msg.pose.orientation.w
+            self.camera_setpoint.rx = msg.pose.orientation.x
+            self.camera_setpoint.ry = msg.pose.orientation.y
+            self.camera_setpoint.rz = msg.pose.orientation.z
+        else:
+            rospy.logfatal("Invalid camera setpoint message type")
+
+        #Perform transformation of camera setpoint wrt to body
+        self.camera_setpoint.pose.position.x=self.camera_setpoint.pose.position.x-cameratobody_x
+        self.camera_setpoint.pose.position.y=self.camera_setpoint.pose.position.y-cameratobody_y
+        self.camera_setpoint.pose.position.z=self.camera_setpoint.pose.position.z-cameratobody_z
+
+
+    def local_position_listener_callback(self, data):
+        if data._type=="geometry_msgs/PoseStamped":
+            self.local_position.x = data.pose.position.x
+            self.local_position.y = data.pose.position.y
+            self.local_position.z = data.pose.position.z
+            self.local_position.rw = data.pose.orientation.w
+            self.local_position.rx = data.pose.orientation.x
+            self.local_position.ry = data.pose.orientation.y
+            self.local_position.rz = data.pose.orientation.z
+            self.controller(self.camera_setpoint,self.local_position) #rate of control is based on local position publish rate which should be >30hz
+        else:
+            rospy.logfatal("Invalid local position message type")
+
+
+    # Once the UAV is close to a wall, switch to the last stored setpoint and slowly jog it into position with the thruster
+    # TODO, CONFIRM WITH MATTHEW BEHAVIOUR WHEN UAV IS TOO CLOSE 
+    def controller(self, setpoint, current):
+
+        current_yaw=euler.quat2euler([current.rw,current.rx,current.ry,current.rz]) #wxyz default
+        setpoint_yaw=euler.quat2euler([setpoint.rw,setpoint.rx,setpoint.ry,setpoint.rz]) #wxyz default
+
+        if setpoint.z + cameratobody_z== 0:
+            rospy.loginfo_once("No setpoint position sent yet")
+            msg = PoseStamped()
+            msg.pose.position.x= self.local_position.x
+            msg.pose.position.y= self.local_position.y
+            msg.pose.position.z= self.local_position.z
+            msg.pose.orientation.w = self.local_position.rw
+            msg.pose.orientation.x = self.local_position.rx
+            msg.pose.orientation.y = self.local_position.ry
+            msg.pose.orientation.z = self.local_position.rz
+            self.setpoint_publisher_.publish(msg)
+
+        else:
+            #Jog the UAV towards the setpoint
+            if  typedrone == "Wall" and abs(setpoint.x - current.x) < threshold_jog and abs(setpoint.y-current.y) < threshold_jog and abs(setpoint.z-current.z) < threshold_jog and degrees(abs(setpoint_yaw[2]-current_yaw[2])) < threshold_jog_deg:
+                rospy.loginfo_once("Setpoint[%s,%s,%s] close to drone, jogging it inwards based on past position",self.last_acceptable_setpoint.x,self.last_acceptable_setpoint.y,self.last_acceptable_setpoint.z)
+                self.close_controller(self.last_acceptable_setpoint,self.local_position) # !!!!! CHANGE TO DIFF CONTROLLER
+                # self.thruster_publisher_.publish(10) # Change to output PWM
+
+            #Else, move towards setpoint with controller
+            else:
+                rospy.loginfo_once("Setpoint far from drone, using controller %s",self.local_position.x)
+                self.last_acceptable_setpoint = self.camera_setpoint
+                self.far_controller(self.camera_setpoint,self.local_position)
+
+
+    def far_controller(self, setpoint, current):
+        # Error = Setpoint - Feedback
+        self.error = np.subtract(np.array([setpoint.x, setpoint.y, setpoint.z,
+                                           euler.quat2euler([setpoint.rw,setpoint.rx,setpoint.ry,setpoint.rz])[2]]),
+                                           np.array([current.x, current.y, current.z,
+                                           euler.quat2euler([current.rw,current.rx,current.ry,current.rz])[2]]) )
+        # Derivative error = Error - error_past
+        self.derivative_error = self.error - self.error_past
+
+        input_x = (self.kp_x * self.error[0]) + (self.kd_x * self.derivative_error[0])
+        input_y = (self.kp_y * self.error[1]) + (self.kd_y * self.derivative_error[1])
+        input_z = ((self.kp_z * self.error[2]) + (self.kd_z * self.derivative_error[2]))
+        input_eul = (self.kp_yaw * self.error[3]) + (self.kd_yaw * self.derivative_error[3])
+
+        q = _gohlketransforms.quaternion_from_euler(0, 0, input_eul, 'ryxz')
+        self.publish_setpoint(input_x+current.x,input_y+current.y,input_z+current.z,
+                              q[0],q[1],q[2],q[3])
+        self.error_past = self.error
+
+
+    def close_controller(self, setpoint, current):
+        # Error = Setpoint - Feedback
+        self.errorc = np.subtract(np.array([setpoint.x, setpoint.y, setpoint.z,
+                                           euler.quat2euler([setpoint.rw,setpoint.rx,setpoint.ry,setpoint.rz])[2]]),
+                                           np.array([current.x, current.y, current.z,
+                                           euler.quat2euler([current.rw,current.rx,current.ry,current.rz])[2]]) )
+        # Derivative error = Error - error_past
+        self.derivative_errorc = self.errorc - self.error_pastc
+
+        input_xc = (self.kp_xc * self.errorc[0]) + (self.kd_xc * self.derivative_errorc[0])
+        input_yc = (self.kp_yc * self.errorc[1]) + (self.kd_yc * self.derivative_errorc[1])
+        input_zc = ((self.kp_zc * self.errorc[2]) + (self.kd_zc * self.derivative_errorc[2]))
+        input_eulc = (self.kp_yawc * self.errorc[3]) + (self.kd_yawc * self.derivative_errorc[3])
+
+        q = _gohlketransforms.quaternion_from_euler(0, 0, input_eulc, 'ryxz')
+        self.publish_setpoint(input_xc+current.x,input_yc+current.y,input_zc+current.z,
+                              q[0],q[1],q[2],q[3])
+        self.error_pastc = self.errorc
+
+
+    def publish_setpoint(self,x,y,z,rw,rx,ry,rz):
+        msg = PoseStamped()
+        msg.pose.position.x= x
+        msg.pose.position.y= y
+        msg.pose.position.z= z
+        msg.pose.orientation.w = rw
+        msg.pose.orientation.x = rx
+        msg.pose.orientation.y = ry
+        msg.pose.orientation.z = rz
+        self.setpoint_publisher_.publish(msg)
+
+
+    def thruster_controller(self):
+        # error = dist from drone = sqrt(x^2+y^2) , max value at 1m,, setpoint - current
+        # input = 1 - error
+
+        #controller & pub
+        # K * input 
+        # normalise (0 to k*1) to (0 to 100)
+
+
+    
+
+# UAV class to hold variables
+class uav_variables():
+
+    def __init__(self):
+        self.x=0
+        self.y=0
+        self.z=0
+        self.rx=0
+        self.ry=0
+        self.rz=0
+        self.rw=0
+
+
+if __name__ == '__main__':
+    rospy.init_node('controller')
+
+    node = controller()
+
+    rospy.spin()
