@@ -11,6 +11,7 @@ from std_msgs.msg import Int32, Float64, String, Bool
 import numpy as np
 from transforms3d import _gohlketransforms,euler
 from math import degrees, radians
+import tf
 
 # Type of drone
 typedrone = "wall" # wall / lamp 
@@ -21,13 +22,14 @@ cameratobody_y =0 # +ve is left
 cameratobody_z =0 # +ve is up 
 
 # Camera Topic for desired setpoint
+camera_setpoint_mode="/tf" #listen for setpoint at /tf or at /topic(given by camera_setpoint_topic)
 camera_setpoint_topic="/camera_setpoint" # if tf is not in use
-camera_frame_id="/camera"
-world_frame_id="/world"
+camera_frame_id="/d435"
+world_frame_id="/map"
 
 # Setpoint Topic to publish to
 setpoint_topic="/mavros/setpoint_position/local"
-local_position_topic="/mavros/local_position/pose"
+local_position_topic="/mavros/local_position/pose" # /mavros/local_position/pose for local indoor position; /mavros/global_position/local for local outdoor position with GPS
 
 # Threshold for jogging, when setpoint is under these conditions, drone will jog instead
 threshold_jog=0.5 #m
@@ -38,35 +40,38 @@ thruster_output_topic="/thruster/pwm"
 # Update rate
 rate = 1/60 #10 times every second
 
+# Serial
+Serial_EN = 1
+
 
 class controller():
 
     def __init__(self):
         print("Initalising Controller")
 
-        # rospy.Subscriber(
-        #     camera_setpoint_topic,
-        #     PoseStamped,
-        #     self.camera_listener_callback)
-        rospy.Subscriber(
-            camera_setpoint_topic,
-            TFMessage,
-            self.camera_listener_callback)
+        if camera_setpoint_mode == "/topic":
+            # rospy.Subscriber(
+            #     camera_setpoint_topic,
+            #     PoseStamped,
+            #     self.camera_listener_callback)
+            rospy.Subscriber(
+                camera_setpoint_topic,
+                TFMessage,
+                self.camera_listener_callback)
+        else:
+            self.listener = tf.TransformListener()
         self.camera_setpoint = uav_variables()
         self.last_acceptable_setpoint = uav_variables()
         self.last_acceptable_setpoint = self.camera_setpoint
-
 
         rospy.Subscriber(
             local_position_topic,
             PoseStamped,
             self.local_position_listener_callback)
         self.local_position = uav_variables()
-        # self.eul_deg=np.array([0,0,0])
-        # self.rad_deg=np.array([0,0,0,0])
 
-        self.setpoint_publisher_ = rospy.Publisher(setpoint_topic, PoseStamped, queue_size=1)
         self.thruster_publisher_ = rospy.Publisher(thruster_output_topic, Int32, queue_size=1)
+        self.setpoint_publisher_ = rospy.Publisher(setpoint_topic, PoseStamped, queue_size=1)
 
         # Far Controller variables
         self.kp_x = 0.5
@@ -90,6 +95,10 @@ class controller():
         self.kp_yawc = 0.5
         self.kd_yawc = 0.0625
         self.error_pastc = np.array([0,0,0,0])
+
+        # Thruster Controller variables
+        self.kp_xt = 0.2
+        self.error_pastt = 0
 
         self.rosrate=rospy.Rate(1/rate)
 
@@ -134,7 +143,27 @@ class controller():
             self.local_position.rx = data.pose.orientation.x
             self.local_position.ry = data.pose.orientation.y
             self.local_position.rz = data.pose.orientation.z
-            self.controller(self.camera_setpoint,self.local_position) #rate of control is based on local position publish rate which should be >30hz
+
+            #In topic mode, get setpoint from the topic alone
+            if camera_setpoint_mode == "/topic":
+                self.controller(self.camera_setpoint,self.local_position) #rate of control is based on local position publish rate which should be >30hz
+            #In tf mode, transform the point to the drone's frame
+            elif camera_setpoint_mode == "/tf":
+                try:
+                    (trans,rot)=self.listener.lookupTransform(camera_frame_id, world_frame_id, rospy.Time(0))
+                    self.camera_setpoint.x = trans[0]+self.local_position.x
+                    self.camera_setpoint.y = trans[1]+self.local_position.y
+                    self.camera_setpoint.z = trans[2]+self.local_position.z
+                    self.camera_setpoint.rx = rot[0]*self.local_position.rx
+                    self.camera_setpoint.ry = rot[1]*self.local_position.ry
+                    self.camera_setpoint.rz = rot[2]*self.local_position.rz
+                    self.camera_setpoint.rw = rot[3]*self.local_position.rw
+                    print(trans)
+                except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                    rospy.logdebug("Missing tf transform")
+                self.controller(self.camera_setpoint,self.local_position) #rate of control is based on local position publish rate which should be >30hz
+            else:
+                rospy.logfatal("Invalid camera setpoint mode")
         else:
             rospy.logfatal("Invalid local position message type")
 
@@ -163,7 +192,7 @@ class controller():
             if  typedrone == "Wall" and abs(setpoint.x - current.x) < threshold_jog and abs(setpoint.y-current.y) < threshold_jog and abs(setpoint.z-current.z) < threshold_jog and degrees(abs(setpoint_yaw[2]-current_yaw[2])) < threshold_jog_deg:
                 rospy.loginfo_once("Setpoint[%s,%s,%s] close to drone, jogging it inwards based on past position",self.last_acceptable_setpoint.x,self.last_acceptable_setpoint.y,self.last_acceptable_setpoint.z)
                 self.close_controller(self.last_acceptable_setpoint,self.local_position) # !!!!! CHANGE TO DIFF CONTROLLER
-                # self.thruster_publisher_.publish(10) # Change to output PWM
+                self.thruster_controller.publish(self.last_acceptable_setpoint,self.local_position) # Change to output PWM
 
             #Else, move towards setpoint with controller
             else:
@@ -224,16 +253,21 @@ class controller():
         self.setpoint_publisher_.publish(msg)
 
 
-    def thruster_controller(self):
-        # error = dist from drone = sqrt(x^2+y^2) , max value at 1m,, setpoint - current
-        # input = 1 - error
+    def thruster_controller(self, setpoint, current):
 
-        #controller & pub
-        # K * input 
-        # normalise (0 to k*1) to (0 to 100)
+        def magnitude(vector):
+            return math.sqrt(sum(pow(element, 2) for element in vector))
 
+        # error = dist from drone = sqrt(x^2+y^2) , max value at 1m, setpoint - current
+        v=np.array([setpoint.x,setpoint.y]-[current.x,current.y])
 
-    
+        error = max(magnitude(v), 1)
+        self.error_pastt = error
+
+        input = map(self.kp_xt * (1 - error), self.kp_xt, 0, 100)
+
+        self.thruster_publisher_.publish(input) # Change to output PWM
+
 
 # UAV class to hold variables
 class uav_variables():
