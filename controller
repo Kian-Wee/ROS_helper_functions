@@ -12,6 +12,7 @@ import numpy as np
 from transforms3d import _gohlketransforms,euler
 from math import degrees, radians
 import tf
+import serial
 
 # Type of drone
 typedrone = "wall" # wall / lamp 
@@ -42,7 +43,7 @@ rate = 1/60 #10 times every second
 
 # Serial
 Serial_EN = 1
-
+ser = serial.Serial('/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_84:F7:03:A0:FC:F0-if00', 115200)
 
 class controller():
 
@@ -102,6 +103,9 @@ class controller():
 
         self.rosrate=rospy.Rate(1/rate)
 
+        if Serial_EN == 1:
+            self.prev_ser_input=""
+
         print("Finish initalising Controller")
 
 
@@ -158,7 +162,6 @@ class controller():
                     self.camera_setpoint.ry = rot[1]*self.local_position.ry
                     self.camera_setpoint.rz = rot[2]*self.local_position.rz
                     self.camera_setpoint.rw = rot[3]*self.local_position.rw
-                    print(trans)
                 except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                     rospy.logdebug("Missing tf transform")
                 self.controller(self.camera_setpoint,self.local_position) #rate of control is based on local position publish rate which should be >30hz
@@ -267,6 +270,11 @@ class controller():
         input = map(self.kp_xt * (1 - error), self.kp_xt, 0, 100)
 
         self.thruster_publisher_.publish(input) # Change to output PWM
+
+        if Serial_EN == 1:
+            if input != self.prev_ser_input:
+                ser.write(String(input))
+            self.prev_ser_input = input
 
 
 # UAV class to hold variables
