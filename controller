@@ -25,7 +25,7 @@ cameratobody_z =0 # +ve is up
 # Camera Topic for desired setpoint
 camera_setpoint_mode="/tf" #listen for setpoint at /tf or at /topic(given by camera_setpoint_topic)
 camera_setpoint_topic="/camera_setpoint" # if tf is not in use
-camera_frame_id="/d435"
+camera_frame_id="/camera"
 world_frame_id="/map"
 
 # Setpoint Topic to publish to
@@ -42,8 +42,8 @@ thruster_output_topic="/thruster/pwm"
 rate = 1/60 #10 times every second
 
 # Serial
-Serial_EN = 1
-ser = serial.Serial('/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_84:F7:03:A0:FC:F0-if00', 115200)
+Serial_EN = 0
+# ser = serial.Serial('/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_84:F7:03:A0:FC:F0-if00', 115200)
 
 class controller():
 
